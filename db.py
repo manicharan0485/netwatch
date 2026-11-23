@@ -92,6 +92,7 @@ def init_db():
         c.executescript(USER_SCHEMA)
         import tickets
         c.executescript(tickets.TICKET_SCHEMA)
+        c.executescript(tickets.ATTACH_SCHEMA)
         # Upgrade databases created by earlier versions of NetWatch.
         existing = {r["name"] for r in c.execute("PRAGMA table_info(devices)")}
         for name, ddl in {**DEVICE_COLUMNS, "blocked": "INTEGER DEFAULT 0"}.items():

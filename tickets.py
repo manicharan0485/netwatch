@@ -4,6 +4,9 @@ A ticket tracks one problem from start to finish: who reported it, which device
 it is about, who is working on it, the notes, and how it was resolved.
 Serious alerts (critical or high) open a ticket automatically, once per problem.
 """
+import os
+import re
+import secrets
 import time
 
 import db
@@ -35,6 +38,99 @@ CREATE TABLE IF NOT EXISTS ticket_comments (
     ts REAL
 );
 """
+
+
+ATTACH_SCHEMA = """
+CREATE TABLE IF NOT EXISTS ticket_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER,
+    filename TEXT,          -- name as uploaded, shown to people
+    stored_name TEXT,       -- random name on disk, never shown
+    mime TEXT,
+    size INTEGER,
+    uploaded_by TEXT,
+    ts REAL
+);
+"""
+
+MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_FILES_PER_UPLOAD = 5
+
+# extension -> (required first bytes or None, mime type)
+ALLOWED_TYPES = {
+    ".png": (b"\x89PNG\r\n\x1a\n", "image/png"),
+    ".jpg": (b"\xff\xd8\xff", "image/jpeg"),
+    ".jpeg": (b"\xff\xd8\xff", "image/jpeg"),
+    ".gif": (b"GIF8", "image/gif"),
+    ".webp": (b"RIFF", "image/webp"),
+    ".pdf": (b"%PDF", "application/pdf"),
+    ".txt": (None, "text/plain; charset=utf-8"),
+    ".docx": (b"PK\x03\x04", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ".xlsx": (b"PK\x03\x04", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
+def attachments_dir():
+    path = os.path.join(db.DATA_DIR, "attachments")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _safe_name(name):
+    base = os.path.basename(name or "file").strip().replace("\x00", "")
+    base = re.sub(r"[^A-Za-z0-9._ -]", "_", base)[:120]
+    return base or "file"
+
+
+def read_upload(upload):
+    """Check one uploaded file without saving it. Raises ValueError with a plain message."""
+    filename = _safe_name(upload.filename)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_TYPES:
+        allowed = ", ".join(sorted(e[1:] for e in ALLOWED_TYPES))
+        raise ValueError(f"'{filename}' is not a supported file. Use one of: {allowed}")
+    data = upload.read(MAX_FILE_BYTES + 1)
+    if len(data) > MAX_FILE_BYTES:
+        raise ValueError(f"'{filename}' is larger than 10 MB")
+    if not data:
+        raise ValueError(f"'{filename}' is empty")
+    magic, mime = ALLOWED_TYPES[ext]
+    if magic and not data.startswith(magic):
+        raise ValueError(f"'{filename}' does not look like a {ext[1:].upper()} file")
+    if ext == ".txt":
+        if b"\x00" in data[:4096]:
+            raise ValueError(f"'{filename}' is not a plain text file")
+        data.decode("utf-8", errors="replace")
+
+    return {"filename": filename, "ext": ext, "mime": mime, "data": data}
+
+
+def store_attachment(ticket_id, uploaded_by, info):
+    """Save a file that read_upload() has already checked."""
+    filename, ext, mime, data = info["filename"], info["ext"], info["mime"], info["data"]
+    stored = secrets.token_hex(16) + ext
+    with open(os.path.join(attachments_dir(), stored), "wb") as fh:
+        fh.write(data)
+    attachment_id = db.write(
+        "INSERT INTO ticket_attachments (ticket_id, filename, stored_name, mime, size,"
+        " uploaded_by, ts) VALUES (?,?,?,?,?,?,?)",
+        (ticket_id, filename, stored, mime, len(data), uploaded_by, time.time()))
+    _touch(ticket_id)
+    db.add_audit(uploaded_by, "ticket_attachment", f"#{ticket_id} {filename}")
+    return attachment_id
+
+
+def add_attachment(ticket_id, uploaded_by, upload):
+    return store_attachment(ticket_id, uploaded_by, read_upload(upload))
+
+
+def get_attachment(ticket_id, attachment_id):
+    row = db.one("SELECT * FROM ticket_attachments WHERE id=? AND ticket_id=?",
+                 (attachment_id, ticket_id))
+    if row is None:
+        return None, None
+    return row, os.path.join(attachments_dir(), row["stored_name"])
 
 
 def _touch(ticket_id):
@@ -88,6 +184,9 @@ def get(ticket_id):
         return None
     ticket["comments"] = db.query(
         "SELECT * FROM ticket_comments WHERE ticket_id=? ORDER BY id", (ticket_id,))
+    ticket["attachments"] = db.query(
+        "SELECT id, filename, mime, size, uploaded_by, ts FROM ticket_attachments"
+        " WHERE ticket_id=? ORDER BY id", (ticket_id,))
     return ticket
 
 

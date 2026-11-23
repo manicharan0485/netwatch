@@ -53,7 +53,8 @@ def _load_secret_key():
 
 app = Flask(__name__)
 app.secret_key = _load_secret_key()
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  MAX_CONTENT_LENGTH=50 * 1024 * 1024)   # 5 files of up to 10 MB each
 db.init_db()
 monitor = Monitor(CFG)
 
@@ -86,7 +87,7 @@ def require_login():
                 return None
             return jsonify({"error": "Set up an admin account first", "setup": True}), 403
         return None if path == "/setup" else redirect(url_for("setup_page"))
-    if path in PUBLIC_API or path in ("/login", "/setup"):
+    if path in PUBLIC_API or path in ("/login", "/setup", "/api/logout"):
         return None
     user = current_user()
     if user is None:
@@ -97,7 +98,8 @@ def require_login():
         # Anyone signed in can report a problem and add a note; admins do the rest.
         if request.method == "POST" and (
                 path == "/api/tickets" or
-                (path.startswith("/api/tickets/") and path.endswith("/comments"))):
+                (path.startswith("/api/tickets/") and
+                 (path.endswith("/comments") or path.endswith("/attachments")))):
             return None
         return jsonify({"error": "Only an admin can do this"}), 403
     return None
@@ -526,7 +528,18 @@ def traffic_history():
 
 
 def _ticket_payload():
+    """Form fields (when files are attached) or a JSON body."""
+    if request.form:
+        return request.form.to_dict()
     return request.get_json(silent=True) or {}
+
+
+def _uploads():
+    """Checked uploads from the request, or raise ValueError with a plain message."""
+    files = [f for f in request.files.getlist("files") if f and f.filename]
+    if len(files) > tickets.MAX_FILES_PER_UPLOAD:
+        raise ValueError(f"You can attach up to {tickets.MAX_FILES_PER_UPLOAD} files at a time")
+    return [tickets.read_upload(f) for f in files]
 
 
 @app.get("/api/tickets")
@@ -548,13 +561,49 @@ def create_ticket_api():
             ipaddress.ip_address(ip)
         except ValueError:
             return jsonify({"error": "The device address is not valid"}), 400
+    try:
+        uploads = _uploads()        # check every file before anything is saved
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    user = current_user()["username"]
     ticket_id = tickets.create(
         title=title,
         description=str(body.get("description", "")),
         severity=body.get("severity", "medium"),
         ip=ip,
-        reported_by=current_user()["username"])
-    return jsonify({"ok": True, "id": ticket_id}), 201
+        reported_by=user)
+    for info in uploads:
+        tickets.store_attachment(ticket_id, user, info)
+    return jsonify({"ok": True, "id": ticket_id, "files": len(uploads)}), 201
+
+
+@app.post("/api/tickets/<int:ticket_id>/attachments")
+def attach_ticket_api(ticket_id):
+    if tickets.get(ticket_id) is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    try:
+        uploads = _uploads()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not uploads:
+        return jsonify({"error": "Choose a file first"}), 400
+    user = current_user()["username"]
+    for info in uploads:
+        tickets.store_attachment(ticket_id, user, info)
+    return jsonify({"ok": True, "files": len(uploads)}), 201
+
+
+@app.get("/api/tickets/<int:ticket_id>/attachments/<int:attachment_id>")
+def download_attachment(ticket_id, attachment_id):
+    row, path = tickets.get_attachment(ticket_id, attachment_id)
+    if row is None or not os.path.exists(path):
+        return jsonify({"error": "File not found"}), 404
+    from flask import send_file
+    is_image = os.path.splitext(row["stored_name"])[1].lower() in tickets.IMAGE_EXTS
+    response = send_file(path, mimetype=row["mime"],
+                         as_attachment=not is_image, download_name=row["filename"])
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.get("/api/tickets/<int:ticket_id>")

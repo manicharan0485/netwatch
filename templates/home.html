@@ -103,8 +103,11 @@
       </select>
       <label class="sub">Device address (optional)</label>
       <input class="txt" id="tIp" placeholder="e.g. 192.168.1.20">
-      <label class="sub">More details (optional)</label>
-      <textarea class="txt" id="tDesc" rows="3"></textarea>
+      <label class="sub">Add a picture or document (optional)</label>
+      <input class="txt" type="file" id="tFiles" multiple
+             accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.docx,.xlsx">
+      <div class="sub" style="font-size:13px">Up to 5 files, 10 MB each. A photo of the screen or the error message helps most.</div>
+      <div class="sub" id="tFileList" style="font-size:13px;margin-top:4px"></div>
       <div>
         <button class="btn" id="tSubmit">Send ticket</button>
         <button class="btn secondary" id="tCancel">Cancel</button>
@@ -187,7 +190,9 @@ const fmtTime = (t) => t ? new Date(t * 1000).toLocaleString() : "";
 let me = {role: "viewer"};
 
 async function api(path, opts = {}) {
-  const r = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opts});
+  // Uploads send their own form encoding; everything else is JSON.
+  const headers = opts.body instanceof FormData ? {} : {"Content-Type": "application/json"};
+  const r = await fetch(path, {headers, ...opts});
   const body = await r.json().catch(() => ({}));
   if (r.status === 401) { window.location.href = "/login"; throw new Error("login"); }
   if (!r.ok) throw new Error(body.error || r.statusText);
@@ -236,13 +241,20 @@ async function loadTickets() {
 document.querySelectorAll(".tfilter").forEach(b => b.onclick = () => { ticketFilter = b.dataset.f; loadTickets().catch(() => {}); });
 $("#newTicketBtn").onclick = () => $("#ticketForm").classList.toggle("hidden");
 $("#tCancel").onclick = () => $("#ticketForm").classList.add("hidden");
+$("#tFiles").onchange = () => {
+  const files = [...$("#tFiles").files];
+  $("#tFileList").textContent = files.length ? "Attached: " + files.map(f => f.name).join(", ") : "";
+};
 $("#tSubmit").onclick = async () => {
   const box = $("#tFormMsg");
+  const form = new FormData();
+  form.append("title", $("#tTitle").value);
+  form.append("severity", $("#tSeverity").value);
+  form.append("ip", $("#tIp").value);
+  [...$("#tFiles").files].forEach(f => form.append("files", f));
   try {
-    const r = await api("/api/tickets", {method: "POST", body: JSON.stringify({
-      title: $("#tTitle").value, severity: $("#tSeverity").value,
-      ip: $("#tIp").value, description: $("#tDesc").value})});
-    $("#tTitle").value = ""; $("#tIp").value = ""; $("#tDesc").value = "";
+    const r = await api("/api/tickets", {method: "POST", body: form});
+    $("#tTitle").value = ""; $("#tIp").value = ""; $("#tFiles").value = ""; $("#tFileList").textContent = "";
     $("#ticketForm").classList.add("hidden");
     ticketFilter = "open"; loadTickets(); openTicket(r.id); loadHome();
   } catch (e) { box.className = "msg bad"; box.textContent = e.message; }
@@ -272,6 +284,20 @@ async function openTicket(id) {
       <div class="sub" style="margin-top:6px">${t.ip ? "Device: " + esc(t.ip) + " · " : ""}Reported by ${esc(t.reported_by)} · ${fmtTime(t.created)}${t.assignee ? " · Assigned to " + esc(t.assignee) : ""}</div>
       ${t.description ? `<p style="margin:10px 0">${esc(t.description)}</p>` : ""}
       ${t.resolved_note ? `<p class="msg ok">Resolved: ${esc(t.resolved_note)}</p>` : ""}
+      <h3 style="margin:16px 0 6px;font-size:16px">Pictures and documents</h3>
+      ${t.attachments.length ? t.attachments.map(a => {
+        const url = `/api/tickets/${t.id}/attachments/${a.id}`;
+        const img = a.mime.startsWith("image/")
+          ? `<a href="${url}" target="_blank"><img src="${url}" alt="${esc(a.filename)}" style="max-width:100%;border-radius:10px;border:1px solid var(--line);margin-top:6px"></a>` : "";
+        return `<div class="item">
+          <a href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>
+          <span class="sub"> · ${Math.max(1, Math.round(a.size / 1024))} KB · ${esc(a.uploaded_by)}</span>
+          ${img}</div>`;
+      }).join("") : '<p class="sub">No files attached.</p>'}
+      <div class="row" style="gap:8px;margin-top:8px">
+        <input class="txt" type="file" id="tAddFiles" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.docx,.xlsx">
+        <button class="btn secondary" id="tAddFileBtn">Add file</button>
+      </div>
       ${actions}
       <h3 style="margin:16px 0 6px;font-size:16px">Notes</h3>
       ${t.comments.length ? t.comments.map(c => `
@@ -284,6 +310,14 @@ async function openTicket(id) {
       <div class="msg" id="tDetailMsg"></div>
     </div>`;
   $("#tBack").onclick = () => { $("#ticketDetail").classList.add("hidden"); loadTickets(); };
+  $("#tAddFileBtn").onclick = async () => {
+    const files = [...$("#tAddFiles").files];
+    if (!files.length) { $("#tDetailMsg").className = "msg bad"; $("#tDetailMsg").textContent = "Choose a file first."; return; }
+    const form = new FormData();
+    files.forEach(f => form.append("files", f));
+    try { await api(`/api/tickets/${id}/attachments`, {method: "POST", body: form}); openTicket(id); }
+    catch (e) { $("#tDetailMsg").className = "msg bad"; $("#tDetailMsg").textContent = e.message; }
+  };
   $("#tNoteBtn").onclick = async () => {
     try { await api(`/api/tickets/${id}/comments`, {method: "POST", body: JSON.stringify({text: $("#tNote").value})}); openTicket(id); }
     catch (e) { $("#tDetailMsg").className = "msg bad"; $("#tDetailMsg").textContent = e.message; }
