@@ -78,39 +78,49 @@
     // Time labels: at most about 8 across the chart.
     const maxLabels = cssWidth < 480 ? 4 : 8;
     const every = Math.max(1, Math.ceil(n / maxLabels));
+    const ticks = series.ticks && series.ticks.length === n ? series.ticks : null;
     ctx.textAlign = "center"; ctx.textBaseline = "top";
-    for (let i = 0; i < n; i += every) {
+    for (let i = 0; i < n; i++) {
+      if (ticks ? !ticks[i] : (i % every !== 0)) continue;
       ctx.beginPath(); ctx.moveTo(x(i), top); ctx.lineTo(x(i), top + h); ctx.stroke();
       ctx.fillText(series.labels[i], x(i), top + h + 8);
     }
 
     // Filled areas and lines: draw upload first so download sits on top.
+    // Missing values (null) break the line, so a gap is shown instead of a drop to zero.
     const drawSeries = (values, color, fill) => {
-      const pts = values.map((v, i) => ({x: x(i), y: y(v)}));
-      if (!pts.length) return;
-      ctx.beginPath();
-      smoothPath(ctx, pts);
-      ctx.lineTo(x(n - 1), top + h);
-      ctx.lineTo(x(0), top + h);
-      ctx.closePath();
-      ctx.fillStyle = fill; ctx.fill();
-
-      ctx.beginPath();
-      smoothPath(ctx, pts);
-      ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke();
-
-      ctx.fillStyle = color;
-      pts.forEach((p, i) => {
-        if (values[i] > 0 || i === pts.length - 1) {
-          ctx.beginPath(); ctx.arc(p.x, p.y, narrow ? 3 : 4.5, 0, Math.PI * 2); ctx.fill();
+      const runs = [];
+      let run = [];
+      values.forEach((v, i) => {
+        if (v == null) { if (run.length) runs.push(run); run = []; }
+        else run.push({x: x(i), y: y(v), v});
+      });
+      if (run.length) runs.push(run);
+      runs.forEach(pts => {
+        if (pts.length > 1) {
+          ctx.beginPath();
+          smoothPath(ctx, pts);
+          ctx.lineTo(pts[pts.length - 1].x, top + h);
+          ctx.lineTo(pts[0].x, top + h);
+          ctx.closePath();
+          ctx.fillStyle = fill; ctx.fill();
+          ctx.beginPath();
+          smoothPath(ctx, pts);
+          ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke();
         }
+        ctx.fillStyle = color;
+        pts.forEach((p, i) => {
+          if (p.v > 0 || i === pts.length - 1 || pts.length === 1) {
+            ctx.beginPath(); ctx.arc(p.x, p.y, narrow ? 3 : 4.5, 0, Math.PI * 2); ctx.fill();
+          }
+        });
       });
     };
     drawSeries(series.up, UP, "rgba(215,25,31,0.18)");
     drawSeries(series.down, DOWN, "rgba(29,78,216,0.18)");
 
     // Legend with totals for the period.
-    const sum = (a) => a.reduce((s, v) => s + v, 0);
+    const sum = (a) => a.reduce((s, v) => s + (v || 0), 0);
     const fmt = (bytes) => {
       if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1) + " GB";
       if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " MB";
@@ -179,6 +189,7 @@
       labels: series.labels.slice(from, to),
       down: series.down.slice(from, to),
       up: series.up.slice(from, to),
+      ticks: series.ticks ? series.ticks.slice(from, to) : null,
     });
     const bar = canvas._tools;
     const full = a <= 0 && b >= 1;

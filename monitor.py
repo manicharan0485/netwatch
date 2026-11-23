@@ -478,14 +478,27 @@ class Monitor:
             cur = buckets.setdefault(key, [0, 0])
             cur[0] += d
             cur[1] += u
-        labels, down, up = [], [], []
-        for b in range(start, end + bucket, bucket):
-            d, u = buckets.get(b, [0, 0])
-            labels.append(time.strftime(fmt, time.localtime(b)))
-            down.append(d)
-            up.append(u)
-        return {"labels": labels, "down": down, "up": up, "ip": ip, "range": range_key,
-                "bucket_seconds": bucket, "note": note}
+        # Before anything was recorded there is no data, so leave a gap rather than zero.
+        first_db = db.one("SELECT MIN(ts) AS t FROM traffic_minutes")["t"]
+        known_from = min([self.started] + ([first_db] if first_db else []))
+        known_bucket = int(known_from // bucket) * bucket
+        labels, down, up, ticks = [], [], [], []
+        for i, b in enumerate(range(start, end + bucket, bucket)):
+            lt = time.localtime(b)
+            labels.append(time.strftime(fmt, lt))
+            if b < known_bucket:
+                down.append(None)
+                up.append(None)
+            else:
+                d, u = buckets.get(b, [0, 0])
+                down.append(d)
+                up.append(u)
+            if range_key == "7w":
+                ticks.append(i % 7 == 0)                   # one tick a week
+            else:
+                ticks.append(lt.tm_min % 30 == 0)          # a tick every 30 minutes
+        return {"labels": labels, "down": down, "up": up, "ticks": ticks, "ip": ip,
+                "range": range_key, "bucket_seconds": bucket, "note": note}
 
     def traffic_summary(self):
         with self.lock:
