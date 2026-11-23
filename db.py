@@ -86,16 +86,59 @@ CREATE TABLE IF NOT EXISTS audit (
 """
 
 
+MONITOR_SCHEMA = """
+CREATE TABLE IF NOT EXISTS checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    kind TEXT,              -- tcp, http, ping, cert
+    target TEXT,           -- host name or IP (or URL for http)
+    port INTEGER,
+    enabled INTEGER DEFAULT 1,
+    last_ok INTEGER,        -- 1 up, 0 down, NULL not checked yet
+    last_latency_ms REAL,
+    last_checked REAL,
+    last_detail TEXT,
+    fails INTEGER DEFAULT 0,
+    created REAL
+);
+CREATE TABLE IF NOT EXISTS check_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    check_id INTEGER,
+    ts REAL,
+    ok INTEGER,
+    latency_ms REAL,
+    detail TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_check_results ON check_results (check_id, ts);
+CREATE TABLE IF NOT EXISTS device_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL,
+    mac TEXT,
+    kind TEXT,              -- joined, ip_changed, name_changed, port_opened, port_closed
+    detail TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_device_events ON device_events (mac, ts);
+CREATE TABLE IF NOT EXISTS dns_queries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL,
+    client TEXT,
+    name TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_dns_client ON dns_queries (client, ts);
+"""
+
+
 def init_db():
     with connect() as c:
         c.executescript(SCHEMA)
         c.executescript(USER_SCHEMA)
+        c.executescript(MONITOR_SCHEMA)
         import tickets
         c.executescript(tickets.TICKET_SCHEMA)
         c.executescript(tickets.ATTACH_SCHEMA)
         # Upgrade databases created by earlier versions of NetWatch.
         existing = {r["name"] for r in c.execute("PRAGMA table_info(devices)")}
-        for name, ddl in {**DEVICE_COLUMNS, "blocked": "INTEGER DEFAULT 0"}.items():
+        for name, ddl in {**DEVICE_COLUMNS, "blocked": "INTEGER DEFAULT 0", "vendor": "TEXT"}.items():
             if name not in existing:
                 c.execute(f"ALTER TABLE devices ADD COLUMN {name} {ddl}")
 
@@ -141,6 +184,7 @@ def add_alert(severity, category, title, detail, ip=None, dedupe_key=None,
     # Email the admin about serious alerts (no-op unless email is enabled).
     import notify
     notify.alert_email(severity, title, detail, ip)
+    notify.forward_alert(severity, title, detail, ip)
     # Serious alerts also open a support ticket (once per problem).
     import tickets
     tickets.auto_from_alert(severity, title, detail, ip, key)

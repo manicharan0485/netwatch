@@ -128,6 +128,27 @@ def parse_os(root):
     return best or {}
 
 
+def _record_port_changes(ip, open_ports):
+    """Compare with the previous scan: new ports raise an alert, closed ports are logged."""
+    prev = db.one("SELECT mac, open_ports FROM devices WHERE ip=? AND last_scanned IS NOT NULL"
+                  " ORDER BY last_seen DESC LIMIT 1", (ip,))
+    if prev is None or prev["open_ports"] is None:
+        return
+    before = {int(x) for x in prev["open_ports"].split(",") if x.strip().isdigit()}
+    now_ports = {p["port"] for p in open_ports}
+    now = time.time()
+    for port in sorted(now_ports - before):
+        db.write("INSERT INTO device_events (ts, mac, kind, detail) VALUES (?,?,?,?)",
+                 (now, prev["mac"], "port_opened", f"port {port}"))
+        db.add_alert("medium", "port_change", f"New open port {port} on {ip}",
+                     "A service started listening on this device since the last check. "
+                     "If you did not set it up, investigate before trusting the device.",
+                     ip=ip, dedupe_key=f"port_change:{ip}:{port}", window_seconds=86400)
+    for port in sorted(before - now_ports):
+        db.write("INSERT INTO device_events (ts, mac, kind, detail) VALUES (?,?,?,?)",
+                 (now, prev["mac"], "port_closed", f"port {port}"))
+
+
 def start_scan(ip, cfg):
     """Create a scan record and run it in a background thread. Returns scan id."""
     target = check_target(ip, cfg["allowed_networks"])
@@ -171,6 +192,7 @@ def _run(scan_id, ip, cfg):
                 )
 
         info = parse_os(root) if is_root else {}
+        _record_port_changes(ip, open_ports)
         db.write(
             "UPDATE devices SET os_guess=?, os_accuracy=?, os_family=?, open_ports=?,"
             " last_scanned=?, vuln_summary=? WHERE ip=?",

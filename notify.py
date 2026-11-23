@@ -9,6 +9,7 @@ import os
 import smtplib
 import threading
 import time
+import urllib.request
 from email.message import EmailMessage
 
 import db
@@ -112,3 +113,64 @@ def weekly_loop():
         except Exception:
             log.exception("weekly report check failed")
         time.sleep(3600)
+
+
+# ---------------------------------------------------------------- forwarding
+# Slack and Microsoft Teams incoming webhooks, and syslog for a central log server.
+# Both are optional and set in config.json under "webhooks" and "syslog".
+
+SEVERITY_RANK = {"low": 1, "info": 0, "medium": 2, "high": 3, "critical": 4}
+_syslog = {"logger": None}
+
+
+def _post_json(url, payload):
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(url, data=data, method="POST",
+                                 headers={"Content-Type": "application/json",
+                                          "User-Agent": "netwatch/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=10):
+            return True
+    except Exception as exc:
+        log.warning("webhook failed: %s", exc)
+        return False
+
+
+def forward_alert(severity, title, detail, ip):
+    """Send one alert to every configured destination. Never raises."""
+    try:
+        cfg = load_config()
+    except Exception:
+        return
+    text = f"[NetWatch {severity.upper()}] {title}\n{detail}" + (f"\nDevice: {ip}" if ip else "")
+    hooks = cfg.get("webhooks", {})
+    minimum = SEVERITY_RANK.get(hooks.get("min_severity", "high"), 3)
+    if SEVERITY_RANK.get(severity, 0) >= minimum:
+        for key in ("slack_url", "teams_url"):
+            if hooks.get(key):
+                threading.Thread(target=_post_json, args=(hooks[key], {"text": text}),
+                                 daemon=True).start()
+    sys_cfg = cfg.get("syslog", {})
+    if sys_cfg.get("enabled"):
+        if _syslog["logger"] is None:
+            _syslog["logger"] = _make_syslog_logger(sys_cfg)
+        if _syslog["logger"]:
+            _syslog["logger"].log(SYSLOG_LEVEL.get(severity, logging.INFO), "%s | %s | %s", title, ip or "-", detail)
+
+
+SYSLOG_LEVEL = {"critical": logging.CRITICAL, "high": logging.ERROR, "medium": logging.WARNING,
+                "low": logging.INFO, "info": logging.INFO}
+
+
+def _make_syslog_logger(sys_cfg):
+    try:
+        from logging.handlers import SysLogHandler
+        handler = SysLogHandler(address=(sys_cfg.get("host", "127.0.0.1"), int(sys_cfg.get("port", 514))))
+        logger = logging.getLogger("netwatch.syslog")
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+        logger.propagate = False
+        return logger
+    except Exception as exc:
+        log.warning("syslog setup failed: %s", exc)
+        return None

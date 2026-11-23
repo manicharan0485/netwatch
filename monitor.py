@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict, deque
 
 import db
+import vendors
 
 log = logging.getLogger("netwatch.monitor")
 
@@ -98,6 +99,8 @@ class Monitor:
         self.started = time.time()
         # minute (unix time, rounded down) -> {"down": bytes, "up": bytes, "ips": {ip: [down, up]}}
         self.history = {}
+        self.dns_buffer = []                   # (ts, client, name) waiting to be saved
+        vendors.configure(cfg.get("oui_file"))
         self.sniffing = False
         self.sniff_error = None
 
@@ -176,16 +179,19 @@ class Monitor:
 
     def _upsert_device(self, ip, mac, hostname, now):
         existing = db.one("SELECT * FROM devices WHERE mac=?", (mac,))
+        vendor = vendors.vendor_for(mac)
         if existing is None:
             # On the very first discovery, treat what is already there as trusted
             # if configured, so you only get alerted about later arrivals.
             trusted = 1 if (self.cfg.get("learn_on_first_scan") and
                             not self.first_discovery_done) else 0
             db.write(
-                "INSERT INTO devices (mac, ip, hostname, first_seen, last_seen, trusted)"
-                " VALUES (?,?,?,?,?,?)",
-                (mac, ip, hostname, now, now, trusted),
+                "INSERT INTO devices (mac, ip, hostname, first_seen, last_seen, trusted, vendor)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (mac, ip, hostname, now, now, trusted, vendor),
             )
+            db.write("INSERT INTO device_events (ts, mac, kind, detail) VALUES (?,?,?,?)",
+                     (now, mac, "joined", f"{ip}, {hostname or 'no name'}, {vendor or 'unknown maker'}"))
             if not trusted:
                 db.add_alert(
                     "medium", "new_device", "New device joined the network",
@@ -196,8 +202,17 @@ class Monitor:
         else:
             if existing["ip"] != ip:
                 db.write("UPDATE devices SET ip=?, last_seen=? WHERE mac=?", (ip, now, mac))
+                db.write("INSERT INTO device_events (ts, mac, kind, detail) VALUES (?,?,?,?)",
+                         (now, mac, "ip_changed", f"{existing['ip']} -> {ip}"))
             else:
                 db.write("UPDATE devices SET last_seen=? WHERE mac=?", (now, mac))
+            if hostname and existing["hostname"] and hostname != existing["hostname"]:
+                db.write("INSERT INTO device_events (ts, mac, kind, detail) VALUES (?,?,?,?)",
+                         (now, mac, "name_changed", f"{existing['hostname']} -> {hostname}"))
+            if hostname and hostname != existing["hostname"]:
+                db.write("UPDATE devices SET hostname=? WHERE mac=?", (hostname, mac))
+            if vendor and not existing["vendor"]:
+                db.write("UPDATE devices SET vendor=? WHERE mac=?", (vendor, mac))
 
     def discovery_loop(self):
         while True:
@@ -212,6 +227,18 @@ class Monitor:
     def start(self):
         threading.Thread(target=self.discovery_loop, daemon=True).start()
         threading.Thread(target=self.sniff_loop, daemon=True).start()
+        threading.Thread(target=self.dns_flush_loop, daemon=True).start()
+
+    def dns_flush_loop(self):
+        """Write DNS lookups to the database in batches (cheaper than one write per packet)."""
+        while True:
+            time.sleep(10)
+            with self.lock:
+                batch, self.dns_buffer = self.dns_buffer, []
+            if batch:
+                with db.connect() as c:
+                    c.executemany("INSERT INTO dns_queries (ts, client, name) VALUES (?,?,?)", batch)
+                    c.commit()
 
     def sniff_loop(self):
         try:
@@ -235,6 +262,7 @@ class Monitor:
     def on_packet(self, pkt):
         from scapy.layers.inet import IP, TCP, UDP, ICMP
         from scapy.layers.l2 import ARP
+        from scapy.layers.dns import DNS, DNSQR
 
         now = time.time()
         self.packets_seen += 1
@@ -276,6 +304,14 @@ class Monitor:
                 "ts": now, "src": src, "dst": dst, "proto": proto,
                 "sport": sport, "dport": dport, "length": length, "flags": flags,
             })
+            # DNS lookups: a client asking for a name (query, not answer).
+            if UDP in pkt and dport == 53 and DNS in pkt and pkt[DNS].qr == 0 and pkt[DNS].qd:
+                try:
+                    qname = pkt[DNSQR].qname.decode(errors="ignore").rstrip(".")
+                except (AttributeError, UnicodeError):
+                    qname = ""
+                if qname:
+                    self.dns_buffer.append((now, src, qname))
             self._detect(src, dport, flags, length, now)
 
     # ------------------------------------------------------------ detection

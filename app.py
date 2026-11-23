@@ -26,6 +26,7 @@ import db
 import health
 import notify
 import scanner
+import monitors
 import tickets
 from monitor import Monitor
 
@@ -58,7 +59,7 @@ app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
 db.init_db()
 monitor = Monitor(CFG)
 
-PUBLIC_API = {"/api/login", "/api/setup", "/api/me"}
+PUBLIC_API = {"/api/login", "/api/setup", "/api/me", "/metrics"}
 LOGIN_LIMIT = 5             # failed attempts allowed
 LOGIN_LOCK_SECONDS = 300    # lock period after too many failures
 _failed_logins = {}         # username -> [count, first_failure_time]
@@ -211,6 +212,111 @@ def add_user():
 @app.route("/")
 def home():
     return render_template("home.html")
+
+
+@app.get("/api/events")
+def events_api():
+    rows = db.query(
+        "SELECT e.ts, e.kind, e.detail, e.mac, d.hostname, d.ip FROM device_events e"
+        " LEFT JOIN devices d ON d.mac = e.mac ORDER BY e.ts DESC LIMIT 40")
+    return jsonify(rows)
+
+
+@app.get("/api/checks")
+def checks_api():
+    return jsonify(monitors.list_checks())
+
+
+@app.post("/api/checks")
+def create_check_api():
+    body = request.get_json(silent=True) or {}
+    try:
+        check_id = monitors.create(body.get("name", ""), body.get("kind", ""),
+                                   body.get("target", ""), body.get("port") or None,
+                                   current_user()["username"])
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    monitors.run_check_now(check_id)
+    return jsonify({"ok": True, "id": check_id}), 201
+
+
+@app.post("/api/checks/<int:check_id>/run")
+def run_check_api(check_id):
+    result = monitors.run_check_now(check_id)
+    if result is None:
+        return jsonify({"error": "Check not found"}), 404
+    return jsonify(result)
+
+
+@app.delete("/api/checks/<int:check_id>")
+def delete_check_api(check_id):
+    monitors.delete(check_id, current_user()["username"])
+    return jsonify({"ok": True})
+
+
+@app.get("/api/device-history/<mac>")
+def device_history_api(mac):
+    rows = db.query("SELECT ts, kind, detail FROM device_events WHERE mac=?"
+                    " ORDER BY ts DESC LIMIT 200", (mac.upper(),))
+    device = db.one("SELECT * FROM devices WHERE mac=?", (mac.upper(),))
+    return jsonify({"device": device, "events": rows})
+
+
+@app.get("/api/dns")
+def dns_api():
+    client = request.args.get("client") or None
+    if client:
+        try:
+            ipaddress.ip_address(client)
+        except ValueError:
+            return jsonify({"error": "Not a valid IP address"}), 400
+        rows = db.query("SELECT ts, client, name FROM dns_queries WHERE client=?"
+                        " ORDER BY ts DESC LIMIT 300", (client,))
+    else:
+        rows = db.query("SELECT ts, client, name FROM dns_queries ORDER BY ts DESC LIMIT 300")
+    return jsonify(rows)
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus metrics. Needs the token from config.json as a Bearer token; off when empty."""
+    token = CFG.get("metrics_token", "")
+    if not token or request.headers.get("Authorization") != f"Bearer {token}":
+        return "not found", 404, {"Content-Type": "text/plain"}
+    cutoff = time.time() - 2 * CFG.get("discovery_interval_seconds", 120)
+    devices = db.query("SELECT last_seen, vuln_summary FROM devices")
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    for d in devices:
+        if d["vuln_summary"]:
+            for sev, n in json.loads(d["vuln_summary"]).items():
+                if sev in counts:
+                    counts[sev] += n
+    lines = [
+        "# HELP netwatch_devices_total Known devices", "# TYPE netwatch_devices_total gauge",
+        f"netwatch_devices_total {len(devices)}",
+        "# HELP netwatch_devices_online Devices seen in the last discovery cycles",
+        "# TYPE netwatch_devices_online gauge",
+        f"netwatch_devices_online {sum(1 for d in devices if d['last_seen'] >= cutoff)}",
+        "# HELP netwatch_vulnerabilities Known problems found on devices",
+        "# TYPE netwatch_vulnerabilities gauge",
+    ]
+    lines += [f'netwatch_vulnerabilities{{severity="{s}"}} {n}' for s, n in counts.items()]
+    unread = db.query("SELECT severity, COUNT(*) AS n FROM alerts WHERE acknowledged=0 GROUP BY severity")
+    lines += ["# HELP netwatch_alerts_unread Unread alerts", "# TYPE netwatch_alerts_unread gauge"]
+    lines += [f'netwatch_alerts_unread{{severity="{r["severity"]}"}} {r["n"]}' for r in unread]
+    lines += ["# HELP netwatch_check_up 1 when the check passed last time", "# TYPE netwatch_check_up gauge"]
+    checks = db.query("SELECT * FROM checks")
+    for c in checks:
+        up = 1 if c["last_ok"] else 0
+        lines.append(f'netwatch_check_up{{name="{c["name"]}",kind="{c["kind"]}"}} {up}')
+    lines += ["# HELP netwatch_check_latency_ms Last check latency in milliseconds",
+              "# TYPE netwatch_check_latency_ms gauge"]
+    for c in checks:
+        if c["last_latency_ms"] is not None:
+            lines.append(f'netwatch_check_latency_ms{{name="{c["name"]}"}} {c["last_latency_ms"]:.1f}')
+    lines += ["# HELP netwatch_packets_seen_total Packets seen by capture", "# TYPE netwatch_packets_seen_total counter",
+              f"netwatch_packets_seen_total {monitor.packets_seen}"]
+    return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; version=0.0.4"}
 
 
 @app.route("/dashboard")
@@ -698,5 +804,6 @@ if __name__ == "__main__":
         threading.Thread(target=scanner.auto_scan_loop, args=(CFG,), daemon=True).start()
     threading.Thread(target=notify.weekly_loop, daemon=True).start()
     monitor.start()
+    monitors.start()
     app.run(host=CFG.get("bind_host", "127.0.0.1"), port=CFG.get("port", 5000),
             debug=False, threaded=True)

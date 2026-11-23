@@ -22,7 +22,9 @@
     "smtp_port": 587,
     "smtp_user": "",
     "from": "netwatch@example.com",
-    "to": ["admin@example.com"],
+    "to": [
+      "admin@example.com"
+    ],
     "send_weekly_report": true,
     "weekly_day": 0,
     "weekly_hour": 8
@@ -31,5 +33,17 @@
     "port_scan_distinct_ports_10s": 25,
     "syn_per_5s": 300,
     "traffic_bytes_per_10s": 50000000
+  },
+  "metrics_token": "",
+  "oui_file": "",
+  "webhooks": {
+    "slack_url": "",
+    "teams_url": "",
+    "min_severity": "high"
+  },
+  "syslog": {
+    "enabled": false,
+    "host": "127.0.0.1",
+    "port": 514
   }
 }

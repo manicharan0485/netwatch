@@ -87,6 +87,7 @@
     <button class="big" data-panel="devices">My devices<small>Who is connected</small></button>
     <button class="big" data-panel="traffic">Traffic<small>Download and upload</small></button>
     <button class="big" data-panel="tickets">Tickets<small>Report and track problems</small></button>
+    <button class="big" data-panel="checks">Checks<small>Is it up? Certificates</small></button>
     <button class="big" data-panel="alerts">Alerts<small>Things that happened</small></button>
     <button class="big" data-panel="fix">Fix problems<small>Step-by-step help</small></button>
     <button class="big admin-only" data-panel="report">Send report<small>Email a summary</small></button>
@@ -129,6 +130,30 @@
     </div>
     <div id="ticketList" style="margin-top:10px"></div>
     <div id="ticketDetail" class="hidden" style="margin-top:16px"></div>
+  </section>
+
+  <section class="panel hidden" id="panel-checks">
+    <h2>Checks</h2>
+    <p class="sub">Watch a service or website. NetWatch tests it every minute and tells you when it stops responding. Certificate checks warn before a certificate expires.</p>
+    <div id="checkList" style="margin-top:12px"></div>
+    <div class="admin-only" style="margin-top:18px">
+      <h3 style="font-size:16px;margin:0 0 6px">Add a check</h3>
+      <label class="sub">Name</label>
+      <input class="txt" id="cName" placeholder="e.g. Company website">
+      <label class="sub">What to check</label>
+      <select class="txt" id="cKind">
+        <option value="http">Website address responds</option>
+        <option value="tcp">A port is open (service)</option>
+        <option value="ping">Device answers ping</option>
+        <option value="cert">HTTPS certificate is valid</option>
+      </select>
+      <label class="sub">Address</label>
+      <input class="txt" id="cTarget" placeholder="e.g. https://example.com, 192.168.1.20 or nas.local">
+      <label class="sub">Port (for port and certificate checks)</label>
+      <input class="txt" id="cPort" type="number" min="1" max="65535" placeholder="e.g. 22, or 443 for certificates">
+      <div><button class="btn" id="cAdd">Add check</button></div>
+      <div class="msg" id="cMsg"></div>
+    </div>
   </section>
 
   <section class="panel hidden" id="panel-traffic">
@@ -218,12 +243,46 @@ function showPanel(name) {
   if (name === "fix") loadFixes();
   if (name === "traffic") loadHomeTraffic();
   if (name === "tickets") loadTickets().catch(() => {});
+  if (name === "checks") loadChecks().catch(() => {});
 }
 document.querySelectorAll(".big").forEach(b => b.addEventListener("click", () => {
   if (b.dataset.panel === "scan") { document.getElementById("panel-scan").classList.remove("hidden");
     document.querySelectorAll(".big").forEach(x => x.classList.toggle("active", x === b)); return; }
   showPanel(b.dataset.panel);
 }));
+
+// ---------- checks
+async function loadChecks() {
+  const rows = await api("/api/checks");
+  $("#checkList").innerHTML = rows.length ? rows.map(c => {
+    const st = c.last_ok === null ? ["grey", "Not checked yet"] : c.last_ok ? ["ok", "Up"] : ["crit", "Down"];
+    const extra = c.kind === "cert" ? esc(c.last_detail || "") : (c.last_latency_ms != null ? `${Math.round(c.last_latency_ms)} ms` : esc(c.last_detail || ""));
+    return `<div class="item">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div style="min-width:0"><div class="name">${esc(c.name)}</div>
+        <div class="sub">${esc({http:"Website", tcp:"Port", ping:"Ping", cert:"Certificate"}[c.kind] || c.kind)} · ${esc(c.target)}${c.port && c.kind !== "http" ? ":" + c.port : ""}</div></div>
+        <span class="tag ${st[0] === "ok" ? "green" : st[0] === "crit" ? "red" : "grey"}">${st[1]}</span>
+      </div>
+      <div class="sub" style="margin-top:6px">${extra}</div>
+      ${me.role === "admin" ? `<div style="margin-top:6px"><button class="btn secondary" data-cdel="${c.id}">Remove</button></div>` : ""}
+    </div>`;
+  }).join("") : '<p class="sub">No checks yet.</p>';
+  document.querySelectorAll("[data-cdel]").forEach(b => b.onclick = async () => {
+    if (!confirm("Remove this check?")) return;
+    await api(`/api/checks/${b.dataset.cdel}`, {method: "DELETE"}); loadChecks();
+  });
+}
+$("#cAdd") && ($("#cAdd").onclick = async () => {
+  const msg = $("#cMsg");
+  try {
+    await api("/api/checks", {method: "POST", body: JSON.stringify({
+      name: $("#cName").value, kind: $("#cKind").value, target: $("#cTarget").value,
+      port: $("#cPort").value ? Number($("#cPort").value) : null})});
+    $("#cName").value = ""; $("#cTarget").value = ""; $("#cPort").value = "";
+    msg.className = "msg ok"; msg.textContent = "Check added. It has been tested once.";
+    loadChecks();
+  } catch (e) { msg.className = "msg bad"; msg.textContent = e.message; }
+});
 
 // ---------- tickets
 const TSTATUS = {open: ["Open", "yellow"], in_progress: ["In progress", "yellow"], resolved: ["Resolved", "green"]};

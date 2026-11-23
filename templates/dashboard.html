@@ -209,6 +209,17 @@
     </section>
   </div>
 
+  <div class="row-low">
+    <section class="card">
+      <div class="card-head"><h2>Uptime and certificates</h2><span class="label">Checked every minute; certificates every 6 h</span></div>
+      <div class="card-body"><ul class="tlist" id="checks"></ul></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Recent device changes</h2><span class="label">Joins, address and name changes, ports</span></div>
+      <div class="card-body"><ul class="tlist" id="events"></ul></div>
+    </section>
+  </div>
+
   <footer><span>NetWatch · data from this computer, refreshed every 10 seconds</span><span class="mono" id="stamp"></span></footer>
 </div>
 
@@ -354,6 +365,25 @@ function renderScanning(sum, home) {
     <p class="muted" style="font-size:12px;margin:10px 0 0">Network: <span class="mono">${esc(sum.subnet || "")}</span>${sum.running_as_root ? "" : " · run with sudo for OS detection"}</p>`;
 }
 
+function renderChecks(checks) {
+  if (!checks.length) { $("checks").innerHTML = '<li class="sub">No checks yet. Add one on the home screen under Checks.</li>'; return; }
+  $("checks").innerHTML = checks.map(c => {
+    const state = c.last_ok === null ? ["grey", "Not checked"] : c.last_ok ? ["ok", "Up"] : ["crit", "Down"];
+    const detail = c.kind === "cert" ? esc(c.last_detail || "") : (c.last_latency_ms != null ? c.last_latency_ms.toFixed(0) + " ms" : "");
+    return `<li style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+      <div style="min-width:0"><div class="t">${esc(c.name)}</div><div class="sub mono">${esc(c.kind)} · ${esc(c.target)}${c.port ? ":" + c.port : ""}</div></div>
+      <div style="text-align:right;flex:none"><span class="pill ${state[0]}">${state[1]}</span><div class="sub mono" style="margin-top:4px">${detail}</div></div></li>`;
+  }).join("");
+}
+function renderEvents(events) {
+  if (!events.length) { $("events").innerHTML = '<li class="sub">No changes recorded yet.</li>'; return; }
+  const label = { joined: "Joined the network", ip_changed: "Address changed", name_changed: "Name changed",
+                  port_opened: "Port opened", port_closed: "Port closed" };
+  $("events").innerHTML = events.slice(0, 12).map(e => `
+    <li><div class="t">${esc(label[e.kind] || e.kind)}: ${esc(e.hostname || e.mac)}</div>
+      <div class="sub mono">${esc(e.detail)} · ${ago(e.ts)}</div></li>`).join("");
+}
+
 function drawTraffic(s, minutes) {
   drawTrafficChart($("trafficChart"), s);
   const sum = a => a.reduce((x, y) => x + y, 0);
@@ -377,6 +407,8 @@ async function load() {
     renderTickets(tickets);
     renderLocation(sum.network_location);
     renderScanning(sum, home);
+    renderChecks(await api("/api/checks"));
+    renderEvents(await api("/api/events"));
     drawTraffic(traffic, minutes);
     $("live").textContent = "Updated " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
   } catch (e) {
