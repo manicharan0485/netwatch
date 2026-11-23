@@ -39,6 +39,27 @@ def is_root():
     return hasattr(os, "geteuid") and os.geteuid() == 0
 
 
+def default_interface():
+    """Name of the interface that carries the default route (e.g. eth0 or wlan0)."""
+    try:
+        with open("/proc/net/route") as fh:
+            next(fh, None)
+            for line in fh:
+                f = line.split()
+                if len(f) >= 2 and f[1] == "00000000":
+                    return f[0]
+    except OSError:
+        pass
+    return None
+
+
+def resolve_interface(configured):
+    """'auto' or empty means: use the interface that has the default route."""
+    if configured and configured != "auto":
+        return configured
+    return default_interface() or "eth0"
+
+
 def default_gateway():
     """Return the default gateway (usually the router) from the Linux routing table."""
     try:
@@ -201,7 +222,8 @@ class Monitor:
             return
         self.sniffing = True
         try:
-            sniff(iface=self.cfg.get("interface"), prn=self.on_packet, store=False)
+            sniff(iface=resolve_interface(self.cfg.get("interface")),
+                  prn=self.on_packet, store=False)
         except PermissionError:
             self.sniff_error = "packet capture needs root (run with sudo)"
         except Exception as exc:  # interface missing, etc.
@@ -405,7 +427,7 @@ class Monitor:
             "gateway": default_gateway(),
             "sniffing": self.sniffing,
             "sniff_error": self.sniff_error,
-            "interface": self.cfg.get("interface"),
+            "interface": resolve_interface(self.cfg.get("interface")),
             "tracked_hosts": len(self.stats),
             "packets_seen": self.packets_seen,
             "seconds_since_last_packet": (
