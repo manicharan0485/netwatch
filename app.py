@@ -4,9 +4,11 @@ Run with root for packet capture:  sudo .venv/bin/python app.py
 The dashboard binds to 127.0.0.1 by default. Do not expose it to other networks
 without adding authentication first.
 """
+import ipaddress
 import json
 import logging
 import os
+import threading
 import time
 
 from flask import Flask, jsonify, render_template, request
@@ -63,6 +65,36 @@ def trust(mac):
 def discover_now():
     found = monitor.discover()
     return jsonify({"hosts_found": found})
+
+
+@app.post("/api/network")
+def set_network():
+    """Monitor the whole network that contains the given local IP.
+
+    Example: {"ip": "192.168.0.1", "prefix": 24} watches 192.168.0.0/24.
+    Only private networks are accepted, and the choice is saved to config.json.
+    """
+    body = request.get_json(silent=True) or {}
+    raw_ip = str(body.get("ip", "")).strip()
+    try:
+        prefix = int(body.get("prefix", 24))
+        addr = ipaddress.ip_address(raw_ip)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Enter a valid IP address, e.g. 192.168.0.1"}), 400
+    if addr.version != 4 or not (16 <= prefix <= 30):
+        return jsonify({"error": "Use an IPv4 address and a prefix between /16 and /30"}), 400
+    if not addr.is_private:
+        return jsonify({"error": "Only private (home or office) networks can be monitored"}), 400
+
+    subnet = str(ipaddress.ip_network(f"{addr}/{prefix}", strict=False))
+    CFG["discovery_subnet"] = subnet
+    with open(os.path.join(BASE, "config.json"), "w") as fh:
+        json.dump(CFG, fh, indent=2)
+        fh.write("\n")
+    monitor.subnet = subnet
+    monitor.last_discovery = None
+    threading.Thread(target=monitor.discover, daemon=True).start()
+    return jsonify({"subnet": subnet, "message": "Scanning the network now"}), 202
 
 
 @app.get("/api/alerts")

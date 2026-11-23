@@ -86,6 +86,19 @@
 </nav>
 <main>
   <section id="tab-devices" class="tab">
+    <div class="panel">
+      <div class="row">
+        <strong>Network to monitor</strong>
+        <input type="text" id="netIp" placeholder="Any IP on your network, e.g. 192.168.0.1">
+        <select id="netPrefix" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px">
+          <option value="24" selected>/24 (up to 254 devices)</option>
+          <option value="23">/23</option>
+          <option value="22">/22</option>
+        </select>
+        <button class="btn" id="netBtn">Scan this network</button>
+      </div>
+      <div class="muted" id="netMsg" style="margin-top:8px;font-size:13px">Enter your router's IP. The app will scan every device on that network.</div>
+    </div>
     <div class="notice hidden" id="discoveryNotice" style="margin-bottom:12px"></div>
     <div class="panel">
       <table>
@@ -236,6 +249,7 @@ let gatewayIp = null;
 async function loadStatus() {
   const s = await api("/api/status");
   gatewayIp = s.gateway;
+  if (!$("#netIp").value && s.gateway) $("#netIp").value = s.gateway;
   $("#statusline").textContent =
     `Subnet ${s.subnet} · interface ${s.interface} · ${s.devices_online}/${s.devices} devices online (${s.untrusted_devices} untrusted) · ` +
     (s.sniffing ? `${s.packets_seen} packets captured` : "capture off");
@@ -331,6 +345,16 @@ $("#ackAll").onclick = async () => {
 
 // ---------- vulnerabilities
 $("#scanConfirm").onchange = () => { $("#scanBtn").disabled = !$("#scanConfirm").checked; };
+$("#netBtn").onclick = async () => {
+  const ip = $("#netIp").value.trim();
+  const prefix = Number($("#netPrefix").value);
+  $("#netMsg").textContent = "Saving network…";
+  try {
+    const r = await api("/api/network", {method: "POST", body: JSON.stringify({ip, prefix})});
+    $("#netMsg").textContent = `Scanning ${r.subnet}. Devices appear below in about a minute.`;
+    setTimeout(() => { loadDevices(); loadStatus(); }, 15000);
+  } catch (e) { $("#netMsg").textContent = e.message; }
+};
 $("#scanRouterBtn").onclick = () => {
   if (!gatewayIp) { $("#scanMsg").textContent = "Could not detect the router address. Type your router's IP instead (often 192.168.0.1 or 192.168.1.1)."; return; }
   $("#scanIp").value = gatewayIp;
