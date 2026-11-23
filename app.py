@@ -26,6 +26,7 @@ import db
 import health
 import notify
 import scanner
+import tickets
 from monitor import Monitor
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -93,6 +94,11 @@ def require_login():
             return jsonify({"error": "Please log in"}), 401
         return redirect(url_for("login_page"))
     if request.method not in ("GET", "HEAD", "OPTIONS") and user["role"] != "admin":
+        # Anyone signed in can report a problem and add a note; admins do the rest.
+        if request.method == "POST" and (
+                path == "/api/tickets" or
+                (path.startswith("/api/tickets/") and path.endswith("/comments"))):
+            return None
         return jsonify({"error": "Only an admin can do this"}), 403
     return None
 
@@ -232,6 +238,7 @@ def api_home():
         "help_contact": CFG.get("help_contact", "your IT support"),
         "scanning_now": scanner.state["current_ip"],
         "email_on": notify.email_settings().get("enabled", False),
+        "open_tickets": tickets.counts()["unresolved"],
     })
 
 
@@ -516,6 +523,82 @@ def traffic_history():
         except ValueError:
             return jsonify({"error": "Not a valid IP address"}), 400
     return jsonify(monitor.history_series(minutes, ip))
+
+
+def _ticket_payload():
+    return request.get_json(silent=True) or {}
+
+
+@app.get("/api/tickets")
+def list_tickets_api():
+    status = request.args.get("status", "open")
+    rows = tickets.list_tickets(status)
+    return jsonify({"tickets": rows, "counts": tickets.counts()})
+
+
+@app.post("/api/tickets")
+def create_ticket_api():
+    body = _ticket_payload()
+    title = str(body.get("title", "")).strip()
+    if len(title) < 3:
+        return jsonify({"error": "Describe the problem in a few words (at least 3 letters)"}), 400
+    ip = str(body.get("ip", "")).strip() or None
+    if ip:
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            return jsonify({"error": "The device address is not valid"}), 400
+    ticket_id = tickets.create(
+        title=title,
+        description=str(body.get("description", "")),
+        severity=body.get("severity", "medium"),
+        ip=ip,
+        reported_by=current_user()["username"])
+    return jsonify({"ok": True, "id": ticket_id}), 201
+
+
+@app.get("/api/tickets/<int:ticket_id>")
+def get_ticket_api(ticket_id):
+    ticket = tickets.get(ticket_id)
+    if ticket is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    return jsonify(ticket)
+
+
+@app.post("/api/tickets/<int:ticket_id>/comments")
+def comment_ticket_api(ticket_id):
+    if tickets.get(ticket_id) is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    try:
+        tickets.add_comment(ticket_id, current_user()["username"],
+                            str(_ticket_payload().get("text", "")))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True}), 201
+
+
+@app.post("/api/tickets/<int:ticket_id>/status")
+def status_ticket_api(ticket_id):
+    if tickets.get(ticket_id) is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    body = _ticket_payload()
+    try:
+        tickets.set_status(ticket_id, str(body.get("status", "")),
+                           current_user()["username"], str(body.get("note", "")))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True})
+
+
+@app.post("/api/tickets/<int:ticket_id>/assign")
+def assign_ticket_api(ticket_id):
+    if tickets.get(ticket_id) is None:
+        return jsonify({"error": "Ticket not found"}), 404
+    assignee = str(_ticket_payload().get("assignee", "")).strip()
+    if assignee and not db.one("SELECT id FROM users WHERE username=?", (assignee,)):
+        return jsonify({"error": "No account with that name"}), 400
+    tickets.assign(ticket_id, assignee, current_user()["username"])
+    return jsonify({"ok": True})
 
 
 @app.get("/api/problems")

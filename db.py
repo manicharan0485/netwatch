@@ -90,6 +90,8 @@ def init_db():
     with connect() as c:
         c.executescript(SCHEMA)
         c.executescript(USER_SCHEMA)
+        import tickets
+        c.executescript(tickets.TICKET_SCHEMA)
         # Upgrade databases created by earlier versions of NetWatch.
         existing = {r["name"] for r in c.execute("PRAGMA table_info(devices)")}
         for name, ddl in {**DEVICE_COLUMNS, "blocked": "INTEGER DEFAULT 0"}.items():
@@ -138,4 +140,7 @@ def add_alert(severity, category, title, detail, ip=None, dedupe_key=None,
     # Email the admin about serious alerts (no-op unless email is enabled).
     import notify
     notify.alert_email(severity, title, detail, ip)
+    # Serious alerts also open a support ticket (once per problem).
+    import tickets
+    tickets.auto_from_alert(severity, title, detail, ip, key)
     return alert_id

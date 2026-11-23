@@ -80,10 +80,45 @@
     <button class="big" data-panel="scan">Scan my network<small>Find all devices now</small></button>
     <button class="big" data-panel="devices">My devices<small>Who is connected</small></button>
     <button class="big" data-panel="traffic">Traffic<small>Download and upload</small></button>
+    <button class="big" data-panel="tickets">Tickets<small>Report and track problems</small></button>
     <button class="big" data-panel="alerts">Alerts<small>Things that happened</small></button>
     <button class="big" data-panel="fix">Fix problems<small>Step-by-step help</small></button>
     <button class="big admin-only" data-panel="report">Send report<small>Email a summary</small></button>
   </nav>
+
+  <section class="panel hidden" id="panel-tickets">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Tickets</h2>
+      <button class="btn" id="newTicketBtn">Report a problem</button>
+    </div>
+    <div id="ticketForm" class="hidden" style="margin-top:14px">
+      <label class="sub">What is the problem? (short title)</label>
+      <input class="txt" id="tTitle" placeholder="e.g. Kids tablet cannot connect to the internet">
+      <label class="sub">How serious is it?</label>
+      <select class="txt" id="tSeverity">
+        <option value="low">Low: not urgent</option>
+        <option value="medium" selected>Medium: should be fixed soon</option>
+        <option value="high">High: needs attention today</option>
+        <option value="critical">Critical: urgent</option>
+      </select>
+      <label class="sub">Device address (optional)</label>
+      <input class="txt" id="tIp" placeholder="e.g. 192.168.1.20">
+      <label class="sub">More details (optional)</label>
+      <textarea class="txt" id="tDesc" rows="3"></textarea>
+      <div>
+        <button class="btn" id="tSubmit">Send ticket</button>
+        <button class="btn secondary" id="tCancel">Cancel</button>
+      </div>
+      <div class="msg" id="tFormMsg"></div>
+    </div>
+    <div class="row" style="margin-top:14px;gap:8px">
+      <button class="btn secondary tfilter" data-f="open">Open</button>
+      <button class="btn secondary tfilter" data-f="resolved">Resolved</button>
+      <button class="btn secondary tfilter" data-f="all">All</button>
+    </div>
+    <div id="ticketList" style="margin-top:10px"></div>
+    <div id="ticketDetail" class="hidden" style="margin-top:16px"></div>
+  </section>
 
   <section class="panel hidden" id="panel-traffic">
     <div class="row" style="justify-content:space-between">
@@ -169,12 +204,101 @@ function showPanel(name) {
   if (name === "alerts") loadAlerts();
   if (name === "fix") loadFixes();
   if (name === "traffic") loadHomeTraffic();
+  if (name === "tickets") loadTickets().catch(() => {});
 }
 document.querySelectorAll(".big").forEach(b => b.addEventListener("click", () => {
   if (b.dataset.panel === "scan") { document.getElementById("panel-scan").classList.remove("hidden");
     document.querySelectorAll(".big").forEach(x => x.classList.toggle("active", x === b)); return; }
   showPanel(b.dataset.panel);
 }));
+
+// ---------- tickets
+const TSTATUS = {open: ["Open", "yellow"], in_progress: ["In progress", "yellow"], resolved: ["Resolved", "green"]};
+let ticketFilter = "open";
+const fmtAge = (t) => {
+  const m = Math.round((Date.now() / 1000 - t) / 60);
+  if (m < 60) return `${Math.max(m, 0)} min ago`;
+  if (m < 1440) return `${Math.round(m / 60)} h ago`;
+  return `${Math.round(m / 1440)} days ago`;
+};
+async function loadTickets() {
+  const data = await api("/api/tickets?status=" + ticketFilter);
+  document.querySelectorAll(".tfilter").forEach(b => b.classList.toggle("active", b.dataset.f === ticketFilter));
+  $("#ticketList").innerHTML = data.tickets.length ? data.tickets.map(t => `
+    <div class="item" style="cursor:pointer" data-ticket="${t.id}">
+      <span class="tag ${sevTag[t.severity] || "grey"}">${esc(t.severity)}</span>
+      <span class="tag grey">${esc(TSTATUS[t.status][0])}</span>
+      <div class="name" style="margin-top:4px">#${t.id} ${esc(t.title)}</div>
+      <div class="sub">${t.ip ? esc(t.ip) + " · " : ""}${t.assignee ? "assigned to " + esc(t.assignee) + " · " : ""}reported by ${esc(t.reported_by)} · ${fmtAge(t.updated)}</div>
+    </div>`).join("") : '<p class="sub">No tickets here.</p>';
+  document.querySelectorAll("[data-ticket]").forEach(el => el.onclick = () => openTicket(el.dataset.ticket));
+}
+document.querySelectorAll(".tfilter").forEach(b => b.onclick = () => { ticketFilter = b.dataset.f; loadTickets().catch(() => {}); });
+$("#newTicketBtn").onclick = () => $("#ticketForm").classList.toggle("hidden");
+$("#tCancel").onclick = () => $("#ticketForm").classList.add("hidden");
+$("#tSubmit").onclick = async () => {
+  const box = $("#tFormMsg");
+  try {
+    const r = await api("/api/tickets", {method: "POST", body: JSON.stringify({
+      title: $("#tTitle").value, severity: $("#tSeverity").value,
+      ip: $("#tIp").value, description: $("#tDesc").value})});
+    $("#tTitle").value = ""; $("#tIp").value = ""; $("#tDesc").value = "";
+    $("#ticketForm").classList.add("hidden");
+    ticketFilter = "open"; loadTickets(); openTicket(r.id); loadHome();
+  } catch (e) { box.className = "msg bad"; box.textContent = e.message; }
+};
+async function openTicket(id) {
+  const t = await api("/api/tickets/" + id);
+  const users = me.role === "admin" ? await api("/api/users") : [];
+  const actions = me.role === "admin" ? `
+    <div class="row" style="gap:8px;margin-top:10px">
+      <select class="txt" id="tAssign" style="width:auto">
+        <option value="">Nobody</option>
+        ${users.map(u => `<option value="${esc(u.username)}" ${u.username === t.assignee ? "selected" : ""}>${esc(u.username)}</option>`).join("")}
+      </select>
+      <button class="btn secondary" id="tAssignBtn">Assign</button>
+      ${t.status !== "in_progress" && t.status !== "resolved" ? `<button class="btn secondary" data-st="in_progress">Mark in progress</button>` : ""}
+      ${t.status !== "resolved" ? `<button class="btn" data-st="resolved">Mark resolved</button>` : `<button class="btn secondary" data-st="open">Reopen</button>`}
+    </div>` : "";
+  $("#ticketDetail").classList.remove("hidden");
+  $("#ticketDetail").innerHTML = `
+    <div class="panel" style="margin:0">
+      <div class="row" style="justify-content:space-between">
+        <strong>#${t.id} ${esc(t.title)}</strong>
+        <button class="btn secondary" id="tBack">Back to list</button>
+      </div>
+      <div style="margin-top:6px"><span class="tag ${sevTag[t.severity] || "grey"}">${esc(t.severity)}</span>
+        <span class="tag grey">${esc(TSTATUS[t.status][0])}</span></div>
+      <div class="sub" style="margin-top:6px">${t.ip ? "Device: " + esc(t.ip) + " · " : ""}Reported by ${esc(t.reported_by)} · ${fmtTime(t.created)}${t.assignee ? " · Assigned to " + esc(t.assignee) : ""}</div>
+      ${t.description ? `<p style="margin:10px 0">${esc(t.description)}</p>` : ""}
+      ${t.resolved_note ? `<p class="msg ok">Resolved: ${esc(t.resolved_note)}</p>` : ""}
+      ${actions}
+      <h3 style="margin:16px 0 6px;font-size:16px">Notes</h3>
+      ${t.comments.length ? t.comments.map(c => `
+        <div class="item"><div class="sub">${esc(c.username)} · ${fmtTime(c.ts)}</div><div>${esc(c.text)}</div></div>`).join("")
+        : '<p class="sub">No notes yet.</p>'}
+      <div class="row" style="gap:8px;margin-top:10px">
+        <input class="txt" id="tNote" placeholder="Add a note, for example: called the customer, rebooted the router">
+        <button class="btn" id="tNoteBtn">Add note</button>
+      </div>
+      <div class="msg" id="tDetailMsg"></div>
+    </div>`;
+  $("#tBack").onclick = () => { $("#ticketDetail").classList.add("hidden"); loadTickets(); };
+  $("#tNoteBtn").onclick = async () => {
+    try { await api(`/api/tickets/${id}/comments`, {method: "POST", body: JSON.stringify({text: $("#tNote").value})}); openTicket(id); }
+    catch (e) { $("#tDetailMsg").className = "msg bad"; $("#tDetailMsg").textContent = e.message; }
+  };
+  document.querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
+    let note = "";
+    if (b.dataset.st === "resolved") note = prompt("How was it fixed? (one line)") || "";
+    try { await api(`/api/tickets/${id}/status`, {method: "POST", body: JSON.stringify({status: b.dataset.st, note})}); openTicket(id); loadHome(); }
+    catch (e) { $("#tDetailMsg").className = "msg bad"; $("#tDetailMsg").textContent = e.message; }
+  });
+  if ($("#tAssignBtn")) $("#tAssignBtn").onclick = async () => {
+    try { await api(`/api/tickets/${id}/assign`, {method: "POST", body: JSON.stringify({assignee: $("#tAssign").value})}); openTicket(id); }
+    catch (e) { $("#tDetailMsg").className = "msg bad"; $("#tDetailMsg").textContent = e.message; }
+  };
+}
 
 // ---------- traffic chart
 async function loadHomeTraffic() {
@@ -199,7 +323,8 @@ async function loadHome() {
   $("#counts").textContent =
     `${h.devices_total} devices known · ${h.devices_online} online now` +
     (h.devices_with_problems ? ` · ${h.devices_with_problems} with problems` : "") +
-    (h.scanning_now ? ` · scanning ${h.scanning_now}` : "");
+    (h.scanning_now ? ` · scanning ${h.scanning_now}` : "") +
+    (h.open_tickets ? ` · ${h.open_tickets} open ticket${h.open_tickets === 1 ? "" : "s"}` : "");
   $("#helpContact").textContent = h.help_contact;
 }
 
