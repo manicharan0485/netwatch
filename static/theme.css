@@ -326,3 +326,34 @@ header .link, .link { color: var(--nw-text); font-weight: 600; }
 @media (max-width: 1499px) {
   .row-main { grid-template-columns: minmax(0, 1fr) !important; }
 }
+
+/* ---- Phone comfort: the phone layout gets room to breathe ---- */
+@media (max-width: 720px) {
+  body { font-size: 16px; }
+  header { padding: 14px 16px; }
+  header strong { font-size: 18px; }
+  header .who { font-size: 15px; gap: 8px 20px; margin-top: 10px; width: 100%; }
+  header .who .sep { display: none; }
+  header .who a, header .who button { white-space: nowrap; padding: 4px 0; font-size: 15px; }
+  main { padding: 20px 16px 128px; }
+  .light { padding: 24px 22px; gap: 18px; border-radius: 20px; }
+  .light .dot { flex: 0 0 52px; width: 52px; height: 52px; }
+  .headline { font-size: 22px; line-height: 1.25; }
+  .reasons { margin-top: 10px; }
+  .reasons li { font-size: 15px; padding: 4px 0; }
+  .counts { margin-top: 14px; }
+  .counts > span, .nw-chip { font-size: 13px; padding: 5px 12px; }
+  .panel { padding: 22px 20px; margin-bottom: 18px; border-radius: 16px; }
+  .panel h2 { font-size: 20px; margin-bottom: 6px; }
+  .item { padding: 20px 0; }
+  .name { font-size: 17px; }
+  .sub { font-size: 14px; line-height: 1.5; }
+  .tag, .pill { font-size: 13px; padding: 4px 11px; }
+  .item .btn { min-height: 48px; min-width: 132px; margin-top: 12px; font-size: 16px; }
+  .btn { min-height: 48px; font-size: 16px; padding: 12px 20px; }
+  input.txt, select.txt, textarea.txt { min-height: 48px; font-size: 16px; }
+  .buttons { gap: 4px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); }
+  .big { min-height: 66px; padding: 8px 1px; font-size: 11px; letter-spacing: -0.01em; }
+  .big::after { width: 26px; height: 26px; -webkit-mask-size: 26px; mask-size: 26px; margin-bottom: 6px; }
+  .help { font-size: 15px; margin-top: 22px; }
+}
