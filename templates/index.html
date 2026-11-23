@@ -31,7 +31,7 @@
   th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
   a.ip, button.link { color: var(--accent); cursor: pointer; text-decoration: none; background: none; border: 0; padding: 0; font: inherit; }
   a.ip:hover, button.link:hover { text-decoration: underline; }
-  .sev { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; color: #0b0b0b; }
+  .sev { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; color: #0b0b0b; white-space: nowrap; display: inline-block; }
   .sev-critical { background: #d7191f; color: #fff; }
   .sev-high { background: #d7191f; color: #fff; }
   .sev-medium { background: #fdeaea; color: #d7191f; box-shadow: inset 0 0 0 1px #d7191f; }
@@ -66,6 +66,21 @@
   .kv div:nth-child(odd) { color: var(--muted); }
 
   @media (max-width: 600px) { main { padding: 10px; } .panel { padding: 10px; } }
+  /* Phones: every table row becomes a card, each cell labelled by its column heading. */
+  @media (max-width: 720px) {
+    .table-scroll { overflow: visible; }
+    table { min-width: 0 !important; }
+    thead { display: none; }
+    tbody, tr, td { display: block; width: 100%; }
+    tbody tr { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    tbody tr:last-child { border-bottom: 0; }
+    td { border: 0; padding: 5px 0; white-space: normal; display: flex; justify-content: space-between; gap: 12px; text-align: right; align-items: center; }
+    td[data-label]::before { content: attr(data-label); flex: 0 0 auto; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; text-align: left; padding-top: 2px; }
+    td[colspan]::before { content: none; }
+    td[colspan] { justify-content: flex-start; text-align: left; }
+    .panel { padding: 16px; }
+    .kpi-row, .stats { gap: 10px; }
+  }
 </style>
 </head>
 <body>
@@ -540,6 +555,23 @@ function refresh() {
 loadDevices(); loadTraffic(); loadStatus(); pollAlerts(); loadSummary().catch(() => {}); loadVulnOverview().catch(() => {});
 setInterval(() => { pollAlerts().catch(() => {}); loadStatus().catch(() => {}); }, 4000);
 setInterval(refresh, 10000);
+</script>
+<script>
+/* Label table cells with their column heading, so phone layouts can show them. */
+(function () {
+  function label(root) {
+    root.querySelectorAll('table').forEach(t => {
+      const heads = [...t.querySelectorAll('thead th')].map(th => th.textContent.trim());
+      t.querySelectorAll('tbody tr').forEach(tr => {
+        [...tr.children].forEach((td, i) => {
+          if (td.tagName === 'TD' && heads[i] && !td.hasAttribute('data-label')) td.setAttribute('data-label', heads[i]);
+        });
+      });
+    });
+  }
+  label(document);
+  new MutationObserver(() => label(document)).observe(document.body, { childList: true, subtree: true });
+})();
 </script>
 </body>
 </html>
