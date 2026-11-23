@@ -5,7 +5,9 @@ import threading
 import time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE, "netwatch.db")
+# NETWATCH_DATA lets Docker keep the database outside the container.
+DATA_DIR = os.environ.get("NETWATCH_DATA", BASE)
+DB_PATH = os.path.join(DATA_DIR, "netwatch.db")
 _write_lock = threading.Lock()
 
 SCHEMA = """
@@ -66,14 +68,39 @@ DEVICE_COLUMNS = {
 }
 
 
+USER_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password_hash TEXT,
+    role TEXT,              -- 'admin' or 'viewer'
+    created REAL
+);
+CREATE TABLE IF NOT EXISTS audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL,
+    username TEXT,
+    action TEXT,
+    detail TEXT
+);
+"""
+
+
 def init_db():
     with connect() as c:
         c.executescript(SCHEMA)
+        c.executescript(USER_SCHEMA)
         # Upgrade databases created by earlier versions of NetWatch.
         existing = {r["name"] for r in c.execute("PRAGMA table_info(devices)")}
-        for name, ddl in DEVICE_COLUMNS.items():
+        for name, ddl in {**DEVICE_COLUMNS, "blocked": "INTEGER DEFAULT 0"}.items():
             if name not in existing:
                 c.execute(f"ALTER TABLE devices ADD COLUMN {name} {ddl}")
+
+
+def add_audit(username, action, detail=""):
+    """Record who did what, for the audit log."""
+    write("INSERT INTO audit (ts, username, action, detail) VALUES (?,?,?,?)",
+          (time.time(), username or "system", action, detail))
 
 
 def write(sql, params=()):
@@ -103,8 +130,12 @@ def add_alert(severity, category, title, detail, ip=None, dedupe_key=None,
     )
     if recent:
         return None
-    return write(
+    alert_id = write(
         "INSERT INTO alerts (ts, severity, category, title, detail, ip, dedupe_key)"
         " VALUES (?,?,?,?,?,?,?)",
         (time.time(), severity, category, title, detail, ip, key),
     )
+    # Email the admin about serious alerts (no-op unless email is enabled).
+    import notify
+    notify.alert_email(severity, title, detail, ip)
+    return alert_id

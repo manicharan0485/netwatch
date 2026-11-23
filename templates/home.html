@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetWatch – Home</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e6e9ef; --muted:#8b93a7; --accent:#5b8cff;
+          --green:#22c55e; --yellow:#f5c542; --red:#ff4d6d; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f5f6fa; --panel:#fff; --line:#dfe3ec; --text:#1b1f2a; --muted:#5d6478; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:17px/1.5 system-ui, sans-serif; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 18px; border-bottom:1px solid var(--line); }
+  header strong { font-size:20px; }
+  .who { color:var(--muted); font-size:14px; }
+  .link { background:none; border:0; color:var(--accent); cursor:pointer; font:inherit; padding:4px; }
+  main { max-width:900px; margin:0 auto; padding:18px; }
+  .light { display:flex; gap:18px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:22px; }
+  .dot { width:64px; height:64px; border-radius:50%; flex:0 0 64px; background:var(--muted); box-shadow:0 0 0 6px rgba(127,127,127,.12); }
+  .dot.green { background:var(--green); } .dot.yellow { background:var(--yellow); } .dot.red { background:var(--red); }
+  .headline { font-size:24px; font-weight:700; }
+  .reasons { color:var(--muted); margin:4px 0 0; padding-left:18px; }
+  .counts { color:var(--muted); font-size:15px; margin-top:6px; }
+  .buttons { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin:18px 0; }
+  .big { min-height:92px; font:inherit; font-size:18px; font-weight:700; border:1px solid var(--line); border-radius:16px; background:var(--panel); color:var(--text); cursor:pointer; padding:14px; }
+  .big:hover, .big.active { border-color:var(--accent); }
+  .big small { display:block; font-weight:400; color:var(--muted); font-size:14px; margin-top:4px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; margin-bottom:16px; }
+  .panel h2 { margin:0 0 10px; font-size:20px; }
+  .hidden { display:none; }
+  .item { border-top:1px solid var(--line); padding:14px 0; }
+  .item:first-child { border-top:0; padding-top:0; }
+  .name { font-weight:700; font-size:18px; }
+  .sub { color:var(--muted); font-size:14px; }
+  .tag { display:inline-block; padding:3px 10px; border-radius:999px; font-size:14px; font-weight:700; margin-right:6px; }
+  .tag.green { background:rgba(34,197,94,.15); color:var(--green); }
+  .tag.yellow { background:rgba(245,197,66,.2); color:#b58300; }
+  .tag.red { background:rgba(255,77,109,.15); color:var(--red); }
+  .tag.grey { background:rgba(127,127,127,.15); color:var(--muted); }
+  .btn { font:inherit; font-weight:700; padding:12px 16px; border-radius:12px; border:0; background:var(--accent); color:#fff; cursor:pointer; margin:6px 6px 0 0; }
+  .btn.secondary { background:transparent; color:var(--text); border:1px solid var(--line); }
+  .btn.danger { background:var(--red); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .steps { margin:10px 0 0; padding:0; list-style:none; }
+  .steps li { padding:8px 0; }
+  .steps label { display:flex; gap:10px; align-items:flex-start; cursor:pointer; }
+  .steps input { width:22px; height:22px; margin-top:2px; flex:0 0 22px; }
+  .msg { margin-top:10px; font-size:15px; color:var(--muted); }
+  .msg.ok { color:var(--green); } .msg.bad { color:var(--red); }
+  input.txt { font:inherit; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); width:100%; margin:4px 0; }
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  th, td { text-align:left; padding:8px 6px; border-top:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; }
+  .help { color:var(--muted); font-size:15px; margin-top:20px; }
+  @media (max-width:600px) { .light { flex-direction:column; text-align:center; } .dot { width:48px; height:48px; flex-basis:48px; } }
+</style>
+</head>
+<body>
+<header>
+  <strong>NetWatch</strong>
+  <div class="who">
+    <span id="who"></span>
+    <button class="link admin-only" id="teamBtn">Team accounts</button>
+    <button class="link" id="logout">Log out</button>
+    · <a class="link" href="/advanced" style="text-decoration:none">Technician view</a>
+  </div>
+</header>
+
+<main>
+  <section class="light" aria-live="polite">
+    <div class="dot" id="dot"></div>
+    <div>
+      <div class="headline" id="headline">Checking your network…</div>
+      <ul class="reasons" id="reasons"></ul>
+      <div class="counts" id="counts"></div>
+    </div>
+  </section>
+
+  <nav class="buttons">
+    <button class="big" data-panel="scan">Scan my network<small>Find all devices now</small></button>
+    <button class="big" data-panel="devices">My devices<small>Who is connected</small></button>
+    <button class="big" data-panel="alerts">Alerts<small>Things that happened</small></button>
+    <button class="big" data-panel="fix">Fix problems<small>Step-by-step help</small></button>
+    <button class="big admin-only" data-panel="report">Send report<small>Email a summary</small></button>
+  </nav>
+
+  <section class="panel hidden" id="panel-scan">
+    <h2>Scan my network</h2>
+    <p class="sub">Looks for every device connected to this network and checks them for known problems.</p>
+    <button class="btn admin-only" id="scanBtn">Scan now</button>
+    <div class="msg" id="scanMsg"></div>
+  </section>
+
+  <section class="panel hidden" id="panel-devices">
+    <h2>My devices</h2>
+    <div id="deviceList"></div>
+  </section>
+
+  <section class="panel hidden" id="panel-alerts">
+    <h2>Alerts</h2>
+    <button class="btn secondary admin-only" id="ackAllBtn">Mark all as read</button>
+    <div id="alertList" style="margin-top:10px"></div>
+  </section>
+
+  <section class="panel hidden" id="panel-fix">
+    <h2>Fix problems</h2>
+    <div id="fixList"></div>
+  </section>
+
+  <section class="panel hidden" id="panel-report">
+    <h2>Send report</h2>
+    <p class="sub">Emails a plain summary of this week to the people set up in the settings.</p>
+    <button class="btn admin-only" id="reportBtn">Send the report now</button>
+    <div class="msg" id="reportMsg"></div>
+  </section>
+
+  <section class="panel admin-only hidden" id="panel-team">
+    <h2>Team accounts</h2>
+    <p class="sub">Admins can change everything. Viewers can only look.</p>
+    <div class="row" style="display:grid;gap:6px">
+      <input class="txt" id="newUser" placeholder="Username">
+      <input class="txt" id="newPass" type="password" placeholder="Password (at least 8 characters)">
+      <select class="txt" id="newRole"><option value="viewer">Viewer (look only)</option><option value="admin">Admin (can change things)</option></select>
+      <button class="btn" id="addUserBtn">Add account</button>
+    </div>
+    <div class="msg" id="userMsg"></div>
+  </section>
+
+  <p class="help">Need help? Contact <span id="helpContact">your IT support</span>.</p>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtTime = (t) => t ? new Date(t * 1000).toLocaleString() : "";
+let me = {role: "viewer"};
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opts});
+  const body = await r.json().catch(() => ({}));
+  if (r.status === 401) { window.location.href = "/login"; throw new Error("login"); }
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+// ---------- panels
+function showPanel(name) {
+  document.querySelectorAll(".panel").forEach(p => p.classList.add("hidden"));
+  document.querySelectorAll(".big").forEach(b => b.classList.toggle("active", b.dataset.panel === name));
+  const el = document.getElementById("panel-" + name);
+  if (el) el.classList.remove("hidden");
+  if (name === "devices") loadDevices();
+  if (name === "alerts") loadAlerts();
+  if (name === "fix") loadFixes();
+}
+document.querySelectorAll(".big").forEach(b => b.addEventListener("click", () => {
+  if (b.dataset.panel === "scan") { document.getElementById("panel-scan").classList.remove("hidden");
+    document.querySelectorAll(".big").forEach(x => x.classList.toggle("active", x === b)); return; }
+  showPanel(b.dataset.panel);
+}));
+
+// ---------- status light
+async function loadHome() {
+  const h = await api("/api/home");
+  const s = h.status;
+  $("#dot").className = "dot " + s.level;
+  $("#headline").textContent = s.headline;
+  $("#reasons").innerHTML = s.reasons.map(r => `<li>${esc(r)}</li>`).join("");
+  $("#counts").textContent =
+    `${h.devices_total} devices known · ${h.devices_online} online now` +
+    (h.devices_with_problems ? ` · ${h.devices_with_problems} with problems` : "") +
+    (h.scanning_now ? ` · scanning ${h.scanning_now}` : "");
+  $("#helpContact").textContent = h.help_contact;
+}
+
+// ---------- devices
+async function loadDevices() {
+  const rows = await api("/api/devices");
+  $("#deviceList").innerHTML = rows.length ? rows.map(d => {
+    const tag = d.blocked ? '<span class="tag red">Blocked</span>'
+      : d.trusted ? '<span class="tag green">Approved</span>'
+      : '<span class="tag yellow">Unknown</span>';
+    const online = d.online ? '<span class="tag grey">Online</span>' : '<span class="tag grey">Offline</span>';
+    const actions = me.role === "admin" ? `
+      <div>
+        ${d.trusted ? "" : `<button class="btn" data-approve="${esc(d.mac)}">Approve</button>`}
+        ${d.blocked ? "" : `<button class="btn danger" data-block="${esc(d.mac)}">Block</button>`}
+      </div>` : "";
+    return `<div class="item">
+      <div class="name">${esc(d.hostname || "Unnamed device")}</div>
+      <div class="sub">${esc(d.ip)} · ${esc(d.mac)} · ${esc(d.os_guess || "system unknown")}</div>
+      <div style="margin:6px 0">${tag} ${online}</div>
+      ${actions}
+      <div class="msg" data-msg="${esc(d.mac)}"></div>
+    </div>`;
+  }).join("") : '<p class="sub">No devices found yet. Press Scan my network.</p>';
+  document.querySelectorAll("[data-approve]").forEach(b => b.onclick = () => deviceAction(b.dataset.approve, "approve"));
+  document.querySelectorAll("[data-block]").forEach(b => b.onclick = () => {
+    if (confirm("Block this device? You will need to finish the block in your router.")) deviceAction(b.dataset.block, "block");
+  });
+}
+async function deviceAction(mac, action) {
+  const box = document.querySelector(`[data-msg="${CSS.escape(mac)}"]`);
+  try {
+    const r = await api(`/api/devices/${encodeURIComponent(mac)}/${action}`, {method: "POST"});
+    if (action === "approve") { box.className = "msg ok"; box.textContent = "Approved. This device is now trusted."; }
+    else {
+      box.className = "msg";
+      box.innerHTML = `<strong>To finish blocking, do this in your router:</strong><ol class="steps">` +
+        r.router_steps.map(s => `<li>${esc(s)}</li>`).join("") + "</ol>";
+    }
+    loadDevices(); loadHome();
+  } catch (e) { box.className = "msg bad"; box.textContent = e.message; }
+}
+
+// ---------- alerts
+const sevTag = {critical: "red", high: "red", medium: "yellow", low: "grey", info: "grey"};
+async function loadAlerts() {
+  const rows = await api("/api/alerts?since=0");
+  $("#alertList").innerHTML = rows.length ? rows.slice(0, 50).map(a => `
+    <div class="item" style="${a.acknowledged ? "opacity:.6" : ""}">
+      <span class="tag ${sevTag[a.severity] || "grey"}">${esc(a.severity)}</span>
+      <span class="sub">${fmtTime(a.ts)}</span>
+      <div class="name" style="margin-top:4px">${esc(a.title)}</div>
+      <div class="sub">${esc(a.detail)}</div>
+    </div>`).join("") : '<p class="sub">No alerts. Nothing has happened that needs your attention.</p>';
+}
+$("#ackAllBtn") && ($("#ackAllBtn").onclick = async () => {
+  await api("/api/alerts/ack-all", {method: "POST"}); loadAlerts(); loadHome();
+});
+
+// ---------- fix problems
+async function loadFixes() {
+  const rows = await api("/api/problems");
+  if (!rows.length) { $("#fixList").innerHTML = '<p class="sub">Good news: no known problems right now.</p>'; return; }
+  $("#fixList").innerHTML = rows.map(d => `
+    <div class="item">
+      <div class="name">${esc(d.hostname || d.ip)}</div>
+      <div class="sub">${esc(d.ip)}${d.os ? " · " + esc(d.os) : ""}</div>
+      ${d.findings.map((f, i) => `
+        <div style="margin-top:12px">
+          <span class="tag ${sevTag[f.severity] || "grey"}">${esc(f.severity)}</span>
+          <strong>${esc(f.title)}</strong>
+          <div class="sub">${esc(f.description)}</div>
+          <ol class="steps">${f.steps.map((s, j) => `
+            <li><label><input type="checkbox" data-step="${esc(d.ip)}-${i}-${j}"> <span>${esc(s)}</span></label></li>`).join("")}
+          </ol>
+        </div>`).join("")}
+      <div style="margin-top:10px">
+        ${me.role === "admin" ? `<button class="btn" data-check="${esc(d.ip)}">Check again</button>` : ""}
+      </div>
+      <div class="msg" data-fixmsg="${esc(d.ip)}"></div>
+    </div>`).join("");
+  document.querySelectorAll("[data-check]").forEach(b => b.onclick = async () => {
+    const ip = b.dataset.check;
+    const box = document.querySelector(`[data-fixmsg="${CSS.escape(ip)}"]`);
+    box.className = "msg"; box.textContent = "Checking…";
+    try {
+      await api("/api/scan", {method: "POST", body: JSON.stringify({ip})});
+      box.textContent = "Check started. This takes a few minutes. Come back and reload this page to see the result.";
+    } catch (e) { box.className = "msg bad"; box.textContent = e.message; }
+  });
+}
+
+// ---------- scan & report
+$("#scanBtn") && ($("#scanBtn").onclick = async () => {
+  $("#scanMsg").textContent = "Scanning…";
+  try {
+    const r = await api("/api/discover", {method: "POST"});
+    $("#scanMsg").className = "msg ok";
+    $("#scanMsg").textContent = `Found ${r.hosts_found} devices. Each device is checked in the background; see My devices and Fix problems.`;
+    loadHome();
+  } catch (e) { $("#scanMsg").className = "msg bad"; $("#scanMsg").textContent = e.message; }
+});
+$("#reportBtn") && ($("#reportBtn").onclick = async () => {
+  $("#reportMsg").textContent = "Sending…";
+  try {
+    const r = await api("/api/send-report", {method: "POST"});
+    $("#reportMsg").className = "msg ok"; $("#reportMsg").textContent = r.message;
+  } catch (e) { $("#reportMsg").className = "msg bad"; $("#reportMsg").textContent = e.message; }
+});
+
+// ---------- team accounts (admin)
+$("#addUserBtn") && ($("#addUserBtn").onclick = async () => {
+  try {
+    await api("/api/users", {method: "POST", body: JSON.stringify({
+      username: $("#newUser").value.trim(), password: $("#newPass").value, role: $("#newRole").value})});
+    $("#userMsg").className = "msg ok"; $("#userMsg").textContent = "Account added.";
+    $("#newUser").value = ""; $("#newPass").value = "";
+  } catch (e) { $("#userMsg").className = "msg bad"; $("#userMsg").textContent = e.message; }
+});
+
+$("#teamBtn").onclick = () => showPanel("team");
+$("#logout").onclick = async () => { await api("/api/logout", {method: "POST"}); window.location.href = "/login"; };
+
+// ---------- start: who am I, and hide admin-only controls for viewers
+(async function start() {
+  const who = await api("/api/me");
+  if (!who.logged_in) { window.location.href = "/login"; return; }
+  me = who;
+  $("#who").textContent = `${who.username} (${who.role === "admin" ? "admin" : "view only"})`;
+  if (who.role !== "admin") {
+    document.querySelectorAll(".admin-only").forEach(el => el.style.display = "none");
+  }
+  loadHome();
+  setInterval(loadHome, 15000);
+})();
+</script>
+</body>
+</html>

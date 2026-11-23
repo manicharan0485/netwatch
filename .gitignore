@@ -1,3 +1,5 @@
 .venv/
 netwatch.db
+netwatch_secret.key
+data/
 __pycache__/

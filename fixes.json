@@ -1,0 +1,66 @@
+{
+  "Telnet service is open": [
+    "Open the device's settings page in a web browser (the address is often on a sticker on the device or in its manual).",
+    "Log in with the device's admin account.",
+    "Find the Telnet setting. It is usually under Advanced, Management or System.",
+    "Turn Telnet off and save the change.",
+    "Come back here and press Check again."
+  ],
+  "FTP service is open": [
+    "Open the device's settings page and log in as admin.",
+    "Find the FTP or file sharing setting.",
+    "Turn off anonymous (no-password) access.",
+    "If you don't need FTP at all, turn it off.",
+    "Press Check again."
+  ],
+  "SMB file sharing is reachable": [
+    "If this is a computer, make sure its Windows or system updates are installed.",
+    "Ask your IT support whether this device should share files with the whole network.",
+    "If not, block file sharing from the device's firewall settings or limit it to specific computers.",
+    "Press Check again."
+  ],
+  "Remote Desktop (RDP) is reachable": [
+    "Ask your IT support whether remote desktop is needed on this computer.",
+    "If not needed: open Settings, find Remote Desktop, and turn it off.",
+    "If needed: make sure only trusted people can reach it, and that it asks for a password on every login.",
+    "Press Check again."
+  ],
+  "VNC remote desktop is reachable": [
+    "Open the VNC or remote-access program on the device.",
+    "Set a strong password, or turn the service off if nobody uses it.",
+    "Press Check again."
+  ],
+  "Database port is reachable on the network": [
+    "This is usually a server. Ask your IT support to restrict the database to the local machine.",
+    "Make sure the database requires a password.",
+    "Press Check again once IT has made the change."
+  ],
+  "UPnP/SSDP service is reachable": [
+    "Open your router's settings page (usually http://192.168.0.1 or tplinkwifi.net).",
+    "Log in with the router's admin account.",
+    "Find UPnP under Advanced or NAT settings and turn it off.",
+    "Press Check again."
+  ],
+  "Web admin or alternate HTTP port is open": [
+    "Open the device's admin page (the address is shown in the device list).",
+    "Log in and change the default password if you have not already.",
+    "If the admin page does not need to be reachable from the network, ask IT to restrict it.",
+    "Press Check again."
+  ],
+  "Unencrypted HTTP is served": [
+    "Open the device's web settings.",
+    "Turn on HTTPS (sometimes called SSL or secure web access).",
+    "Turn on the option to redirect HTTP to HTTPS, if available.",
+    "Press Check again."
+  ],
+  "Outdated OpenSSH version": [
+    "Install the device's system updates. On Linux: sudo apt update && sudo apt upgrade.",
+    "If the device is not a Linux computer, check its manufacturer's support page for updates.",
+    "Press Check again after updating."
+  ],
+  "Outdated Apache httpd version": [
+    "Update the web server through the system's software updates (on Linux: sudo apt update && sudo apt upgrade).",
+    "If you are not sure how, ask your IT support to update it.",
+    "Press Check again after updating."
+  ]
+}

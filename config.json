@@ -14,6 +14,19 @@
   "learn_on_first_scan": true,
   "bind_host": "127.0.0.1",
   "port": 5000,
+  "router_admin_url": "http://192.168.0.1",
+  "help_contact": "your IT support team",
+  "email": {
+    "enabled": false,
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 587,
+    "smtp_user": "",
+    "from": "netwatch@example.com",
+    "to": ["admin@example.com"],
+    "send_weekly_report": true,
+    "weekly_day": 0,
+    "weekly_hour": 8
+  },
   "thresholds": {
     "port_scan_distinct_ports_10s": 25,
     "syn_per_5s": 300,

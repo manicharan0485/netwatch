@@ -1,0 +1,23 @@
+# NetWatch with Docker.
+#
+# The container uses the host's network so it can see every device on your LAN
+# and capture packets. Linux only (Docker Desktop on Mac/Windows cannot do this).
+#
+#   1. Set the interface and router address in config.json.
+#   2. Optional: export the email password first:  export NETWATCH_SMTP_PASSWORD='...'
+#   3. Start:  docker compose up -d --build
+#   4. Open http://<this-machine-ip>:5000 and create the admin account.
+services:
+  netwatch:
+    build: .
+    network_mode: host
+    cap_add:
+      - NET_RAW     # packet capture and ping scans
+      - NET_ADMIN   # interface and ARP information
+    environment:
+      - NETWATCH_DATA=/data
+      - NETWATCH_SMTP_PASSWORD=${NETWATCH_SMTP_PASSWORD:-}
+    volumes:
+      - ./data:/data                       # database and login key survive restarts
+      - ./config.json:/app/config.json     # edit settings on the host
+    restart: unless-stopped

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetWatch – {{ 'Set up' if setup else 'Log in' }}</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e6e9ef; --muted:#8b93a7; --accent:#5b8cff; --bad:#ff4d6d; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f5f6fa; --panel:#fff; --line:#dfe3ec; --text:#1b1f2a; --muted:#5d6478; } }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, sans-serif; padding:16px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:28px; width:min(400px,100%); }
+  h1 { margin:0 0 6px; font-size:24px; }
+  p { margin:0 0 18px; color:var(--muted); }
+  label { display:block; font-weight:600; margin:14px 0 6px; }
+  input { width:100%; box-sizing:border-box; padding:12px; font:inherit; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  button { width:100%; margin-top:20px; padding:14px; font:inherit; font-weight:700; border:0; border-radius:12px; background:var(--accent); color:#fff; cursor:pointer; }
+  button:disabled { opacity:.6; }
+  .err { color:var(--bad); margin-top:12px; min-height:1.4em; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>NetWatch</h1>
+  {% if setup %}
+    <p>First time here. Create the administrator account. You will use it to log in and manage the network.</p>
+  {% else %}
+    <p>Log in to see your network.</p>
+  {% endif %}
+  <form id="form">
+    <label for="user">Username</label>
+    <input id="user" autocomplete="username" required>
+    <label for="pass">Password {% if setup %}(at least 8 characters){% endif %}</label>
+    <input id="pass" type="password" autocomplete="{{ 'new-password' if setup else 'current-password' }}" required>
+    {% if setup %}
+    <label for="pass2">Repeat password</label>
+    <input id="pass2" type="password" autocomplete="new-password" required>
+    {% endif %}
+    <button id="go" type="submit">{{ 'Create account and continue' if setup else 'Log in' }}</button>
+    <div class="err" id="err"></div>
+  </form>
+</div>
+<script>
+const setup = {{ 'true' if setup else 'false' }};
+document.getElementById("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = document.getElementById("err");
+  err.textContent = "";
+  const username = document.getElementById("user").value.trim();
+  const password = document.getElementById("pass").value;
+  if (setup && password !== document.getElementById("pass2").value) {
+    err.textContent = "The two passwords do not match."; return;
+  }
+  const btn = document.getElementById("go"); btn.disabled = true;
+  try {
+    const r = await fetch(setup ? "/api/setup" : "/api/login", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username, password})
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || "Something went wrong");
+    window.location.href = "/";
+  } catch (ex) {
+    err.textContent = ex.message;
+  } finally { btn.disabled = false; }
+});
+</script>
+</body>
+</html>
