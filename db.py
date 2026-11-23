@@ -125,6 +125,11 @@ CREATE TABLE IF NOT EXISTS dns_queries (
     name TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dns_client ON dns_queries (client, ts);
+CREATE TABLE IF NOT EXISTS traffic_minutes (
+    ts INTEGER PRIMARY KEY,   -- start of the minute
+    down INTEGER,
+    up INTEGER
+);
 """
 
 

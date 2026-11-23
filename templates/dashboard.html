@@ -150,9 +150,10 @@
     </div>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <div class="seg" role="group" aria-label="Traffic period" id="rangeSeg">
-        <button data-minutes="30">30 min</button>
-        <button data-minutes="60" aria-pressed="true">1 h</button>
-        <button data-minutes="120">2 h</button>
+        <button data-range="30m">30 min</button>
+        <button data-range="1h" aria-pressed="true">1 h</button>
+        <button data-range="8h">8 h</button>
+        <button data-range="7w">7 weeks</button>
       </div>
       <span class="live" id="live">Updated just now</span>
       <a class="back" href="/">← Home</a>
@@ -387,21 +388,21 @@ function renderEvents(events) {
       <div class="sub mono">${esc(e.detail)} · ${ago(e.ts)}</div></li>`).join("");
 }
 
-function drawTraffic(s, minutes) {
+function drawTraffic(s, range) {
   drawTrafficChart($("trafficChart"), s);
   const sum = a => a.reduce((x, y) => x + y, 0);
   const fmt = b => b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : b >= 1024 ? (b / 1024).toFixed(1) + " KB" : b + " B";
-  $("trafficRange").textContent = `Last ${minutes >= 60 ? (minutes / 60) + " h" : minutes + " min"}`;
+  $("trafficRange").textContent = { "30m": "Last 30 min", "1h": "Last 1 hour", "8h": "Last 8 hours", "7w": "Last 7 weeks" }[range] || "";
   $("trafficNote").textContent = `Download ${fmt(sum(s.down))} · Upload ${fmt(sum(s.up))}` +
     (s.down.concat(s.up).some(v => v > 0) ? "" : " · no traffic recorded yet");
 }
 
-let minutes = 60;
+let range = "1h";
 async function load() {
   try {
     const [sum, home, devices, alerts, tickets, traffic] = await Promise.all([
       api("/api/summary"), api("/api/home"), api("/api/vuln-overview"),
-      api("/api/alerts?since=0"), api("/api/tickets?status=all"), api("/api/traffic-history?minutes=" + minutes)]);
+      api("/api/alerts?since=0"), api("/api/tickets?status=all"), api("/api/traffic-history?range=" + range)]);
     $("subline").textContent = `${sum.subnet || "Network not set"} · ${home.devices_online} of ${home.devices_total} devices online · ${home.status.headline}`;
     renderKpis(sum, home, devices, alerts, tickets);
     renderDevices(devices);
@@ -412,7 +413,7 @@ async function load() {
     renderScanning(sum, home);
     renderChecks(await api("/api/checks"));
     renderEvents(await api("/api/events"));
-    drawTraffic(traffic, minutes);
+    drawTraffic(traffic, range);
     $("live").textContent = "Updated " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
   } catch (e) {
     if (e.message !== "login") $("live").textContent = "Connection problem, retrying…";
@@ -420,7 +421,7 @@ async function load() {
 }
 
 document.querySelectorAll("#rangeSeg button").forEach(b => b.addEventListener("click", () => {
-  minutes = Number(b.dataset.minutes);
+  range = b.dataset.range;
   document.querySelectorAll("#rangeSeg button").forEach(x => x.setAttribute("aria-pressed", x === b));
   load();
 }));

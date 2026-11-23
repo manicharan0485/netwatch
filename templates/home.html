@@ -160,11 +160,12 @@
   <section class="panel hidden" id="panel-traffic">
     <div class="row" style="justify-content:space-between">
       <h2 style="margin:0">Traffic</h2>
-      <select id="homeMinutes" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit">
-        <option value="30">Last 30 min</option>
-        <option value="60" selected>Last 60 min</option>
-        <option value="120">Last 2 hours</option>
-      </select>
+      <div class="seg" role="group" aria-label="Traffic period" id="homeRange">
+        <button type="button" data-range="30m">30 min</button>
+        <button type="button" data-range="1h" aria-pressed="true">1 h</button>
+        <button type="button" data-range="8h">8 h</button>
+        <button type="button" data-range="7w">7 weeks</button>
+      </div>
     </div>
     <p class="sub" style="margin:8px 0">Download is data coming into your network. Upload is data going out.</p>
     <div style="width:100%"><canvas id="homeChart"></canvas></div>
@@ -435,13 +436,17 @@ async function openTicket(id) {
 
 // ---------- traffic chart
 async function loadHomeTraffic() {
-  const s = await api(`/api/traffic-history?minutes=${$("#homeMinutes").value}`);
+  const range = document.querySelector("#homeRange button[aria-pressed='true']").dataset.range;
+  const s = await api(`/api/traffic-history?range=${range}`);
   drawTrafficChart(document.getElementById("homeChart"), s);
   const any = s.down.some(v => v > 0) || s.up.some(v => v > 0);
   $("#homeTrafficNote").textContent = any ? "" :
     "No traffic recorded yet. Give it a few minutes after NetWatch starts.";
 }
-$("#homeMinutes").addEventListener("change", () => loadHomeTraffic().catch(() => {}));
+document.querySelectorAll("#homeRange button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("#homeRange button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  loadHomeTraffic().catch(() => {});
+}));
 window.addEventListener("resize", () => {
   if (!document.getElementById("panel-traffic").classList.contains("hidden")) loadHomeTraffic().catch(() => {});
 });

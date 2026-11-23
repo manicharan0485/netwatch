@@ -5,6 +5,7 @@
   const UP = "#d7191f";     // upload (yellow)
 
   function unitFor(max) {
+    if (max >= 1024 * 1024 * 1024) return {div: 1024 * 1024 * 1024, name: "GB"};
     if (max >= 1024 * 1024) return {div: 1024 * 1024, name: "MB"};
     if (max >= 1024) return {div: 1024, name: "KB"};
     return {div: 1, name: "B"};
@@ -49,7 +50,8 @@
 
     const textColor = getComputedStyle(canvas).color || "#8a8a8a";
     const gridColor = "rgba(139,147,167,0.25)";
-    const left = 62, right = 12, top = 16, bottom = 30;
+    const narrow = cssWidth < 480;
+    const left = narrow ? 58 : 66, right = narrow ? 8 : 14, top = narrow ? 58 : 24, bottom = 30;
     const w = cssWidth - left - right, h = cssHeight - top - bottom;
 
     const n = series.labels.length;
@@ -71,10 +73,11 @@
       const yy = top + h - (v / yMax) * h;
       ctx.beginPath(); ctx.moveTo(left, yy); ctx.lineTo(left + w, yy); ctx.stroke();
       ctx.textAlign = "right"; ctx.textBaseline = "middle";
-      ctx.fillText(`${v.toFixed(1)}${unit.name}`, left - 8, yy);
+      ctx.fillText(`${v >= 10 ? v.toFixed(0) : v.toFixed(1)}${unit.name}`, left - 8, yy);
     }
     // Time labels: at most about 8 across the chart.
-    const every = Math.max(1, Math.ceil(n / 8));
+    const maxLabels = cssWidth < 480 ? 4 : 8;
+    const every = Math.max(1, Math.ceil(n / maxLabels));
     ctx.textAlign = "center"; ctx.textBaseline = "top";
     for (let i = 0; i < n; i += every) {
       ctx.beginPath(); ctx.moveTo(x(i), top); ctx.lineTo(x(i), top + h); ctx.stroke();
@@ -99,7 +102,7 @@
       ctx.fillStyle = color;
       pts.forEach((p, i) => {
         if (values[i] > 0 || i === pts.length - 1) {
-          ctx.beginPath(); ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(p.x, p.y, narrow ? 3 : 4.5, 0, Math.PI * 2); ctx.fill();
         }
       });
     };
@@ -109,21 +112,36 @@
     // Legend with totals for the period.
     const sum = (a) => a.reduce((s, v) => s + v, 0);
     const fmt = (bytes) => {
+      if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1) + " GB";
       if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " MB";
       if (bytes >= 1024) return (bytes / 1024).toFixed(1) + " KB";
       return bytes + " B";
     };
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
     const legend = [["Download", DOWN, sum(series.down)], ["Upload", UP, sum(series.up)]];
-    let lx = left;
+    // Phones: one item per line. Larger screens: side by side.
+    let lx = left, ly = 8;
     legend.forEach(([label, color, total]) => {
-      ctx.fillStyle = color; ctx.fillRect(lx, 6, 12, 4);
+      ctx.fillStyle = color; ctx.fillRect(lx, ly - 2, 12, 4);
       ctx.fillStyle = textColor;
       const text = `${label}: ${fmt(total)}`;
-      ctx.fillText(text, lx + 18, 8);
-      lx += ctx.measureText(text).width + 40;
+      ctx.fillText(text, lx + 18, ly);
+      if (narrow) { ly += 22; }
+      else { lx += ctx.measureText(text).width + 40; }
     });
   }
 
-  window.drawTrafficChart = drawTrafficChart;
+  // Redraw whenever the chart's box changes size (rotation, window resize, sidebar).
+  function drawResponsive(canvas, series) {
+    canvas._series = series;
+    if (!canvas._observer && window.ResizeObserver) {
+      canvas._observer = new ResizeObserver(() => {
+        if (canvas._series) drawTrafficChart(canvas, canvas._series);
+      });
+      canvas._observer.observe(canvas.parentElement);
+    }
+    drawTrafficChart(canvas, series);
+  }
+
+  window.drawTrafficChart = drawResponsive;
 })();

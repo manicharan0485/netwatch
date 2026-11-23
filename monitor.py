@@ -76,6 +76,15 @@ def default_gateway():
     return None
 
 
+HISTORY_KEEP_SECONDS = 50 * 86400   # saved minutes kept for the 7-week view
+RANGES = {
+    "30m": {"seconds": 30 * 60, "bucket": 60, "fmt": "%H:%M"},
+    "1h": {"seconds": 3600, "bucket": 60, "fmt": "%H:%M"},
+    "8h": {"seconds": 8 * 3600, "bucket": 300, "fmt": "%H:%M"},
+    "7w": {"seconds": 7 * 7 * 86400, "bucket": 86400, "fmt": "%d.%m"},
+}
+
+
 class Monitor:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -99,6 +108,7 @@ class Monitor:
         self.started = time.time()
         # minute (unix time, rounded down) -> {"down": bytes, "up": bytes, "ips": {ip: [down, up]}}
         self.history = {}
+        self._flushed = set()                   # minutes already saved
         self.dns_buffer = []                   # (ts, client, name) waiting to be saved
         vendors.configure(cfg.get("oui_file"))
         self.sniffing = False
@@ -228,6 +238,15 @@ class Monitor:
         threading.Thread(target=self.discovery_loop, daemon=True).start()
         threading.Thread(target=self.sniff_loop, daemon=True).start()
         threading.Thread(target=self.dns_flush_loop, daemon=True).start()
+        threading.Thread(target=self.history_flush_loop, daemon=True).start()
+
+    def history_flush_loop(self):
+        while True:
+            time.sleep(30)
+            try:
+                self.flush_history()
+            except Exception:
+                log.exception("traffic history save failed")
 
     def dns_flush_loop(self):
         """Write DNS lookups to the database in batches (cheaper than one write per packet)."""
@@ -408,22 +427,65 @@ class Monitor:
         if s_local:
             bucket["ips"].setdefault(src, [0, 0])[1] += length
 
-    def history_series(self, minutes=60, ip=None):
-        """Per-minute download and upload in bytes for the last `minutes` minutes."""
-        minutes = max(1, min(int(minutes), 120))
+    def flush_history(self):
+        """Save completed minutes to the database so longer ranges can be shown."""
         now_min = int(time.time() // 60) * 60
-        labels, down, up = [], [], []
         with self.lock:
-            for m in range(now_min - (minutes - 1) * 60, now_min + 60, 60):
-                bucket = self.history.get(m)
-                if ip:
-                    d, u = (bucket["ips"].get(ip, [0, 0]) if bucket else [0, 0])
-                else:
-                    d, u = (bucket["down"], bucket["up"]) if bucket else (0, 0)
-                labels.append(time.strftime("%H:%M", time.localtime(m)))
-                down.append(d)
-                up.append(u)
-        return {"labels": labels, "down": down, "up": up, "ip": ip}
+            done = [(m, b["down"], b["up"]) for m, b in self.history.items()
+                    if m < now_min and m not in self._flushed]
+            for m, _, _ in done:
+                self._flushed.add(m)
+            self._flushed = {m for m in self._flushed if m >= now_min - 2 * 3600}
+        if done:
+            with db.connect() as c:
+                c.executemany("INSERT OR REPLACE INTO traffic_minutes (ts, down, up) VALUES (?,?,?)", done)
+                c.commit()
+        db.write("DELETE FROM traffic_minutes WHERE ts < ?", (now_min - HISTORY_KEEP_SECONDS,))
+
+    def history_series(self, range_key="1h", ip=None):
+        """Download and upload for a period, in buckets sized to the period.
+
+        30 min and 1 h: one point per minute.   8 h: one point per 5 minutes.
+        7 weeks: one point per day. Device filters work for 30 min and 1 h only,
+        because per-device numbers are kept in memory for the last two hours.
+        """
+        spec = RANGES.get(range_key, RANGES["1h"])
+        seconds, bucket, fmt = spec["seconds"], spec["bucket"], spec["fmt"]
+        now = time.time()
+        start = int((now - seconds) // bucket) * bucket
+        end = int(now // bucket) * bucket
+        totals = {}
+        note = None
+        if ip and seconds > 2 * 3600:
+            note = "Device view covers the last 2 hours. Choose 30 min or 1 h."
+            ip = None
+        # Saved minutes from the database.
+        rows = db.query("SELECT ts, down, up FROM traffic_minutes WHERE ts >= ?", (start,))
+        for r in rows:
+            totals[r["ts"]] = (r["down"], r["up"])
+        # Minutes still in memory (not saved yet), including the current minute.
+        with self.lock:
+            for m, b in self.history.items():
+                if m >= start and m not in totals:
+                    if ip:
+                        d, u = b["ips"].get(ip, [0, 0])
+                    else:
+                        d, u = b["down"], b["up"]
+                    totals[m] = (d, u)
+        buckets = {}
+        for m, (d, u) in totals.items():
+            key = int(m // bucket) * bucket
+            cur = buckets.setdefault(key, [0, 0])
+            cur[0] += d
+            cur[1] += u
+        labels, down, up = [], [], []
+        for b in range(start, end + bucket, bucket):
+            d, u = buckets.get(b, [0, 0])
+            labels.append(time.strftime(fmt, time.localtime(b)))
+            down.append(d)
+            up.append(u)
+        return {"labels": labels, "down": down, "up": up, "ip": ip, "range": range_key,
+                "bucket_seconds": bucket, "note": note}
 
     def traffic_summary(self):
         with self.lock:

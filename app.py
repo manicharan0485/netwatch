@@ -628,14 +628,17 @@ def device_findings(ip):
 @app.get("/api/traffic-history")
 def traffic_history():
     """Download and upload per minute, for the whole network or one device (?ip=)."""
-    minutes = request.args.get("minutes", 60, type=int)
+    range_key = request.args.get("range")
+    if range_key not in ("30m", "1h", "8h", "7w"):
+        minutes = request.args.get("minutes", 60, type=int)
+        range_key = "30m" if minutes <= 30 else "1h"
     ip = request.args.get("ip") or None
     if ip:
         try:
             ipaddress.ip_address(ip)
         except ValueError:
             return jsonify({"error": "Not a valid IP address"}), 400
-    return jsonify(monitor.history_series(minutes, ip))
+    return jsonify(monitor.history_series(range_key, ip))
 
 
 def _ticket_payload():
