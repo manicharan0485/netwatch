@@ -64,12 +64,13 @@
     </span>
     <strong>NetWatch</strong>
   </div>
-  <div class="who">
+  <button class="burger" id="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="navMenu"><span></span><span></span><span></span></button>
+  <nav class="who" id="navMenu" aria-label="Main menu">
     <span id="who"></span>
     <button class="link admin-only" id="teamBtn">Team accounts</button>
     <button class="link" id="logout">Log out</button>
     <span class="sep" aria-hidden="true">·</span> <a class="link" href="/dashboard" style="text-decoration:none">Dashboard</a> <span class="sep" aria-hidden="true">·</span> <a class="link" href="/advanced" style="text-decoration:none">Technician view</a>
-  </div>
+  </nav>
 </header>
 
 <main>
@@ -217,6 +218,19 @@
 
 <script src="/static/chart.js"></script>
 <script>
+/* Hamburger menu on phones: opens the header links as a panel. */
+(function () {
+  const burger = document.getElementById("burger"), menu = document.getElementById("navMenu");
+  function set(open) {
+    menu.classList.toggle("open", open);
+    burger.classList.toggle("open", open);
+    burger.setAttribute("aria-expanded", String(open));
+    burger.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  }
+  burger.addEventListener("click", () => set(!menu.classList.contains("open")));
+  menu.addEventListener("click", e => { if (e.target.closest("a, button")) set(false); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") set(false); });
+})();
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtTime = (t) => t ? new Date(t * 1000).toLocaleString() : "";

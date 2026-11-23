@@ -393,3 +393,35 @@ header .link, .link { color: var(--nw-text); font-weight: 600; }
   .light + section, .light + .panel, .panel + section, .panel + .panel, section + section, section + .panel { margin-top: 18px; }
   .help { margin-top: 22px; }
 }
+
+/* ---- Hamburger menu (phones). On larger screens the links stay inline. ---- */
+.burger { display: none; }
+@media (max-width: 720px) {
+  header { position: relative; }
+  .burger {
+    display: inline-flex; flex-direction: column; justify-content: center; gap: 5px;
+    width: 46px; height: 46px; padding: 0; margin-left: auto;
+    background: #ffffff; border: 1px solid var(--nw-line); border-radius: 12px; cursor: pointer;
+  }
+  .burger span { display: block; width: 20px; height: 2px; border-radius: 2px; background: var(--nw-accent); margin: 0 auto; transition: transform .2s ease, opacity .2s ease; }
+  .burger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .burger.open span:nth-child(2) { opacity: 0; }
+  .burger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+  .burger:focus-visible { outline: none; box-shadow: var(--nw-focus); }
+  header .nw-brand { flex: 1 1 auto; }
+  header > .who {
+    display: none;
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 40;
+    flex-direction: column; align-items: stretch; gap: 0;
+    background: #ffffff; border-bottom: 1px solid var(--nw-line);
+    box-shadow: 0 16px 32px rgba(0,0,0,.08);
+    padding: 8px 16px 16px; margin: 0; width: auto;
+  }
+  header > .who.open { display: flex; }
+  header > .who #who { display: block; padding: 12px 0 8px; font-size: 14px; color: var(--nw-muted); border-bottom: 1px solid var(--nw-line); margin-bottom: 4px; }
+  header > .who .link, header > .who a.link { display: block; padding: 14px 0; font-size: 16px; border-bottom: 1px solid var(--nw-line); text-align: left; background: none; width: 100%; }
+  header > .who .sep { display: none; }
+  header > .who .admin-only[style*="display: none"] { display: none !important; }
+  header > .who .link:last-child, header > .who a.link:last-child { border-bottom: 0; }
+  header .who { font-size: 16px; margin-top: 0; }
+}
