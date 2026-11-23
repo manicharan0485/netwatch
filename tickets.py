@@ -160,7 +160,7 @@ def auto_from_alert(severity, title, detail, ip, dedupe_key):
         (dedupe_key,))
     if existing:
         return None
-    return create(title=f"{title}" + (f" on {ip}" if ip else ""),
+    return create(title=title + (f" on {ip}" if ip and ip not in title else ""),
                   description=detail, severity=severity, ip=ip,
                   reported_by="NetWatch (automatic)", source_key=dedupe_key)
 

@@ -6,14 +6,14 @@
 <title>NetWatch</title>
 <style>
   :root {
-    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e6e9ef;
-    --muted: #8b93a7; --accent: #5b8cff;
-    --critical: #ff4d6d; --high: #ff8a3d; --medium: #f5c542; --low: #4cc9a0; --info: #8b93a7;
+    --bg: #000000; --panel: #0d0d0d; --line: #2a2a2a; --text: #f5f5f5;
+    --muted: #8a8a8a; --accent: #d7191f;
+    --critical: #d7191f; --high: #d7191f; --medium: #d7191f; --low: #0b0b0b; --info: #8a8a8a;
   }
   @media (prefers-color-scheme: light) {
-    :root { --bg: #f5f6fa; --panel: #ffffff; --line: #dfe3ec; --text: #1b1f2a; --muted: #5d6478; }
+    :root { --bg: #f5f5f5; --panel: #ffffff; --line: #e6e6e6; --text: #0b0b0b; --muted: #5e5e5e; }
   }
-  :root[data-theme="dark"] { --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e6e9ef; --muted: #8b93a7; }
+  :root[data-theme="dark"] { --bg: #000000; --panel: #0d0d0d; --line: #2a2a2a; --text: #f5f5f5; --muted: #8a8a8a; }
   * { box-sizing: border-box; }
   body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); }
   header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
@@ -31,12 +31,12 @@
   th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
   a.ip, button.link { color: var(--accent); cursor: pointer; text-decoration: none; background: none; border: 0; padding: 0; font: inherit; }
   a.ip:hover, button.link:hover { text-decoration: underline; }
-  .sev { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; color: #111; }
-  .sev-critical { background: var(--critical); color: #fff; }
-  .sev-high { background: var(--high); }
-  .sev-medium { background: var(--medium); }
-  .sev-low { background: var(--low); }
-  .sev-info { background: var(--info); color: #fff; }
+  .sev { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; color: #0b0b0b; }
+  .sev-critical { background: #d7191f; color: #fff; }
+  .sev-high { background: #d7191f; color: #fff; }
+  .sev-medium { background: #fdeaea; color: #d7191f; box-shadow: inset 0 0 0 1px #d7191f; }
+  .sev-low { background: #efefef; color: #0b0b0b; }
+  .sev-info { background: #5e5e5e; color: #fff; }
   .muted { color: var(--muted); }
   .btn { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; font: inherit; }
   .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }

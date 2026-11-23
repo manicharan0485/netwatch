@@ -1,8 +1,8 @@
 /* Traffic chart: smooth filled lines for download and upload, drawn on a canvas.
  * Usage: drawTrafficChart(canvasElement, {labels, down, up}) */
 (function () {
-  const DOWN = "#4cc9d6";   // download (teal)
-  const UP = "#ffc800";     // upload (yellow)
+  const DOWN = "#0b0b0b";   // download (teal)
+  const UP = "#d7191f";     // upload (yellow)
 
   function unitFor(max) {
     if (max >= 1024 * 1024) return {div: 1024 * 1024, name: "MB"};
@@ -34,7 +34,10 @@
 
   function drawTrafficChart(canvas, series) {
     const dpr = window.devicePixelRatio || 1;
-    const cssWidth = canvas.parentElement.clientWidth || 600;
+    // Fit inside the container's padding, so the chart never runs past the card edge.
+    const host = canvas.parentElement;
+    const pad = getComputedStyle(host);
+    const cssWidth = (host.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight)) || 600;
     const cssHeight = Math.min(320, Math.max(220, Math.round(cssWidth * 0.45)));
     canvas.style.width = cssWidth + "px";
     canvas.style.height = cssHeight + "px";
@@ -44,7 +47,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-    const textColor = getComputedStyle(canvas).color || "#8b93a7";
+    const textColor = getComputedStyle(canvas).color || "#8a8a8a";
     const gridColor = "rgba(139,147,167,0.25)";
     const left = 62, right = 12, top = 16, bottom = 30;
     const w = cssWidth - left - right, h = cssHeight - top - bottom;
@@ -100,8 +103,8 @@
         }
       });
     };
-    drawSeries(series.up, UP, "rgba(255,200,0,0.18)");
-    drawSeries(series.down, DOWN, "rgba(76,201,214,0.18)");
+    drawSeries(series.up, UP, "rgba(215,25,31,0.18)");
+    drawSeries(series.down, DOWN, "rgba(11,11,11,0.18)");
 
     // Legend with totals for the period.
     const sum = (a) => a.reduce((s, v) => s + v, 0);
