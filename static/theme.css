@@ -461,3 +461,11 @@ header .link, .link { color: var(--nw-text); font-weight: 600; }
 .seg button:hover { color: var(--nw-text); }
 .seg button[aria-pressed="true"] { background: #ffffff; color: var(--nw-accent); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .seg button:focus-visible { outline: none; box-shadow: var(--nw-focus); }
+
+/* ---- Chart zoom controls ---- */
+.chart-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.chart-tools button { min-width: 40px; min-height: 36px; padding: 6px 10px; border: 1px solid var(--nw-line); border-radius: 10px; background: #ffffff; color: var(--nw-accent); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.chart-tools button:hover:not(:disabled) { border-color: var(--nw-accent); }
+.chart-tools button:disabled { opacity: .35; cursor: default; }
+.chart-tools button:focus-visible { outline: none; box-shadow: var(--nw-focus); }
+.chart-tools-info { margin-left: auto; font-size: 13px; color: var(--nw-muted); }

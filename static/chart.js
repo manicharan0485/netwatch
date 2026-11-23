@@ -33,7 +33,7 @@
     }
   }
 
-  function drawTrafficChart(canvas, series) {
+  function paint(canvas, series) {
     const dpr = window.devicePixelRatio || 1;
     // Fit inside the container's padding, so the chart never runs past the card edge.
     const host = canvas.parentElement;
@@ -131,16 +131,75 @@
     });
   }
 
+  // ---- Zoom and move: buttons above the chart. The view is a share of the whole
+  // period (0 to 1), so it keeps its place when new data arrives.
+  function ensureTools(canvas) {
+    if (canvas._tools) return;
+    const bar = document.createElement("div");
+    bar.className = "chart-tools";
+    bar.innerHTML =
+      '<button type="button" data-z="out" aria-label="Zoom out">&minus;</button>' +
+      '<button type="button" data-z="in" aria-label="Zoom in">+</button>' +
+      '<button type="button" data-z="left" aria-label="Move earlier">&lsaquo;</button>' +
+      '<button type="button" data-z="right" aria-label="Move later">&rsaquo;</button>' +
+      '<button type="button" data-z="reset">Reset</button>' +
+      '<span class="chart-tools-info" aria-live="polite"></span>';
+    canvas.parentElement.insertBefore(bar, canvas);
+    bar.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (b && !b.disabled) act(canvas, b.dataset.z);
+    });
+    canvas._tools = bar;
+    canvas._view = [0, 1];
+  }
+
+  function act(canvas, z) {
+    let [a, b] = canvas._view;
+    const w = b - a, c = (a + b) / 2;
+    if (z === "in") { const nw = Math.max(0.03, w / 2); a = c - nw / 2; b = c + nw / 2; }
+    if (z === "out") { const nw = Math.min(1, w * 2); a = c - nw / 2; b = c + nw / 2; }
+    if (z === "left") { a -= w / 2; b -= w / 2; }
+    if (z === "right") { a += w / 2; b += w / 2; }
+    if (z === "reset") { a = 0; b = 1; }
+    if (a < 0) { b -= a; a = 0; }
+    if (b > 1) { a -= b - 1; b = 1; }
+    canvas._view = [Math.max(0, a), Math.min(1, b)];
+    render(canvas);
+  }
+
+  function render(canvas) {
+    const series = canvas._series;
+    if (!series || !series.labels.length) return;
+    ensureTools(canvas);
+    const n = series.labels.length;
+    const [a, b] = canvas._view;
+    const from = Math.floor(a * n);
+    const to = Math.min(n, Math.max(from + 2, Math.ceil(b * n)));
+    paint(canvas, {
+      labels: series.labels.slice(from, to),
+      down: series.down.slice(from, to),
+      up: series.up.slice(from, to),
+    });
+    const bar = canvas._tools;
+    const full = a <= 0 && b >= 1;
+    const minimal = (to - from) <= 2;
+    bar.querySelector('[data-z="in"]').disabled = minimal;
+    bar.querySelector('[data-z="out"]').disabled = full;
+    bar.querySelector('[data-z="left"]').disabled = a <= 0;
+    bar.querySelector('[data-z="right"]').disabled = b >= 1;
+    bar.querySelector('[data-z="reset"]').disabled = full;
+    bar.querySelector(".chart-tools-info").textContent =
+      full ? `All ${n} points` : `${to - from} of ${n} points`;
+  }
+
   // Redraw whenever the chart's box changes size (rotation, window resize, sidebar).
   function drawResponsive(canvas, series) {
     canvas._series = series;
     if (!canvas._observer && window.ResizeObserver) {
-      canvas._observer = new ResizeObserver(() => {
-        if (canvas._series) drawTrafficChart(canvas, canvas._series);
-      });
+      canvas._observer = new ResizeObserver(() => render(canvas));
       canvas._observer.observe(canvas.parentElement);
     }
-    drawTrafficChart(canvas, series);
+    render(canvas);
   }
 
   window.drawTrafficChart = drawResponsive;
