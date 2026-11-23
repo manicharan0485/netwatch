@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NetWatch – {{ 'Set up' if setup else 'Log in' }}</title>
 <style>
-  :root { --bg:#ffffff; --panel:#ffffff; --line:#e6e6e6; --text:#0b0b0b; --muted:#5e5e5e; --accent:#d7191f; --bad:#d7191f; }
+  :root { --bg:#ffffff; --panel:#ffffff; --line:#e6e6e6; --text:#c1121f; --muted:#9b2a2f; --accent:#d7191f; --bad:#d7191f; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#000000; --panel:#0d0d0d; --line:#2a2a2a; --text:#f5f5f5; --muted:#a3a3a3; } }
   body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, sans-serif; padding:16px; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:28px; width:min(400px,100%); }
@@ -20,7 +20,7 @@
 </head>
 <body>
 <div class="card">
-  <div style="width:44px;height:44px;border-radius:12px;background:#0b0b0b;display:grid;place-items:center;margin-bottom:16px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></div>
+  <div style="width:44px;height:44px;border-radius:12px;background:#c1121f;display:grid;place-items:center;margin-bottom:16px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></div>
   <h1>NetWatch</h1>
   {% if setup %}
     <p>First time here. Create the administrator account. You will use it to log in and manage the network.</p>

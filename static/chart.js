@@ -1,7 +1,7 @@
 /* Traffic chart: smooth filled lines for download and upload, drawn on a canvas.
  * Usage: drawTrafficChart(canvasElement, {labels, down, up}) */
 (function () {
-  const DOWN = "#0b0b0b";   // download (teal)
+  const DOWN = "#1d4ed8";   // download (teal)
   const UP = "#d7191f";     // upload (yellow)
 
   function unitFor(max) {
@@ -104,7 +104,7 @@
       });
     };
     drawSeries(series.up, UP, "rgba(215,25,31,0.18)");
-    drawSeries(series.down, DOWN, "rgba(11,11,11,0.18)");
+    drawSeries(series.down, DOWN, "rgba(29,78,216,0.18)");
 
     // Legend with totals for the period.
     const sum = (a) => a.reduce((s, v) => s + v, 0);

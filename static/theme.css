@@ -7,11 +7,11 @@
   --nw-surface: #ffffff;
   --nw-surface-2: #f7f7f7;
   --nw-line: #e6e6e6;
-  --nw-text: #0b0b0b;
-  --nw-muted: #5e5e5e;
+  --nw-text: #c1121f;
+  --nw-muted: #9b2a2f;
   --nw-accent: #d7191f;
   --nw-accent-soft: rgba(215,25,31,0.10);
-  --nw-green: #0b0b0b;
+  --nw-green: #c1121f;
   --nw-yellow: #d7191f;
   --nw-red: #d7191f;
   --nw-radius: 16px;
@@ -29,7 +29,7 @@
     --nw-muted: #9aa4bd;
     --nw-accent: #d7191f;
     --nw-accent-soft: rgba(215,25,31,0.14);
-    --nw-green: #0b0b0b;
+    --nw-green: #c1121f;
     --nw-yellow: #d7191f;
     --nw-red: #d7191f;
     --nw-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
@@ -284,21 +284,21 @@ td, th { border-color: var(--nw-line); }
 /* ---- Red, white and black: status language ----
  * Healthy = solid black, Warning = red outline, Critical = solid red.
  * Shape carries the meaning too, so the state reads without color. */
-.tag.green { background: #efefef; color: #0b0b0b; border-color: #d4d4d4; }
+.tag.green { background: #efefef; color: #c1121f; border-color: #d4d4d4; }
 .tag.yellow { background: #ffffff; color: #d7191f; border-color: #d7191f; }
 .tag.red { background: #d7191f; color: #ffffff; border-color: #d7191f; }
-.tag.grey { background: #f2f2f2; color: #5e5e5e; border-color: #e6e6e6; }
-.dot.green { background: #0b0b0b; box-shadow: 0 0 0 8px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.18); }
+.tag.grey { background: #f2f2f2; color: #9b2a2f; border-color: #e6e6e6; }
+.dot.green { background: #c1121f; box-shadow: 0 0 0 8px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.18); }
 .dot.yellow { background: #ffffff; box-shadow: inset 0 0 0 9px #d7191f, 0 0 0 8px rgba(215,25,31,.08); }
 .dot.red { background: #d7191f; box-shadow: 0 0 0 8px rgba(215,25,31,.12), 0 6px 18px rgba(215,25,31,.35); }
 .light:has(.dot.green)::after, .light:has(.dot.yellow)::after { background: none; }
 .light:has(.dot.red)::after { background: radial-gradient(120% 140% at 0% 0%, rgba(215,25,31,.08), transparent 60%); }
-.nw-logo { background: #0b0b0b; box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+.nw-logo { background: #c1121f; box-shadow: 0 4px 12px rgba(0,0,0,.18); }
 .nw-logo svg path { stroke: #ffffff; }
-.pill.ok { background: #efefef; color: #0b0b0b; }
+.pill.ok { background: #efefef; color: #c1121f; }
 .pill.warn { background: #ffffff; color: #d7191f; box-shadow: inset 0 0 0 1px #d7191f; }
 .pill.crit { background: #d7191f; color: #ffffff; }
-.counts > span, .nw-chip { background: #f5f5f5; color: #5e5e5e; }
+.counts > span, .nw-chip { background: #f5f5f5; color: #9b2a2f; }
 
 /* ---- Taste pass: calm headers, a clear hierarchy, and a tidy 7-button row ---- */
 header .link, .link { color: var(--nw-text); font-weight: 600; }
@@ -378,4 +378,18 @@ header .link, .link { color: var(--nw-text); font-weight: 600; }
 /* ---- Phones: the header scrolls away so the content gets the screen ---- */
 @media (max-width: 720px) {
   header { position: static; }
+}
+
+/* ---- Red text, white background, blue for healthy ----
+ * Red = problems and most text. Blue = healthy and download. */
+.pill.ok { color: #1d4ed8; background: #e8efff; }
+.pill.ok::before { background: #1d4ed8; }
+.tag.green { color: #1d4ed8; background: #e8efff; border-color: #b7c9f5; }
+.dot.green { background: #1d4ed8; box-shadow: 0 0 0 8px rgba(29,78,216,.10), 0 6px 18px rgba(29,78,216,.25); }
+.sev-low { background: #e8efff; color: #1d4ed8; }
+.live::before { background: #1d4ed8; }
+/* ---- Phones: space between every section ---- */
+@media (max-width: 720px) {
+  .light + section, .light + .panel, .panel + section, .panel + .panel, section + section, section + .panel { margin-top: 18px; }
+  .help { margin-top: 22px; }
 }
