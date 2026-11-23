@@ -101,8 +101,10 @@
         <option value="high">High: needs attention today</option>
         <option value="critical">Critical: urgent</option>
       </select>
-      <label class="sub">Device address (optional)</label>
-      <input class="txt" id="tIp" placeholder="e.g. 192.168.1.20">
+      <label class="sub">Which device is it about? (optional)</label>
+      <select class="txt" id="tIpSel"></select>
+      <input class="txt hidden" id="tIp" placeholder="Type the address, e.g. 192.168.1.20">
+      <div class="sub" style="font-size:13px">Pick a device from the list. If it is not there, choose "Type an address".</div>
       <label class="sub">Add a picture or document (optional)</label>
       <input class="txt" type="file" id="tFiles" multiple
              accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.docx,.xlsx">
@@ -239,7 +241,24 @@ async function loadTickets() {
   document.querySelectorAll("[data-ticket]").forEach(el => el.onclick = () => openTicket(el.dataset.ticket));
 }
 document.querySelectorAll(".tfilter").forEach(b => b.onclick = () => { ticketFilter = b.dataset.f; loadTickets().catch(() => {}); });
-$("#newTicketBtn").onclick = () => $("#ticketForm").classList.toggle("hidden");
+async function loadTicketDevices() {
+  const rows = await api("/api/devices");
+  const sel = $("#tIpSel");
+  sel.innerHTML = '<option value="">Not sure / not listed</option>' +
+    rows.filter(d => d.ip).map(d => `<option value="${esc(d.ip)}">${esc(d.hostname || "Unnamed device")} (${esc(d.ip)})</option>`).join("") +
+    '<option value="__other">Type an address</option>';
+  sel.value = "";
+  $("#tIp").classList.add("hidden");
+}
+$("#tIpSel").onchange = () => {
+  const other = $("#tIpSel").value === "__other";
+  $("#tIp").classList.toggle("hidden", !other);
+  if (!other) $("#tIp").value = "";
+};
+$("#newTicketBtn").onclick = () => {
+  const show = $("#ticketForm").classList.toggle("hidden") === false;
+  if (show) loadTicketDevices().catch(() => {});
+};
 $("#tCancel").onclick = () => $("#ticketForm").classList.add("hidden");
 $("#tFiles").onchange = () => {
   const files = [...$("#tFiles").files];
@@ -250,7 +269,8 @@ $("#tSubmit").onclick = async () => {
   const form = new FormData();
   form.append("title", $("#tTitle").value);
   form.append("severity", $("#tSeverity").value);
-  form.append("ip", $("#tIp").value);
+  const pick = $("#tIpSel").value;
+  form.append("ip", pick === "__other" ? $("#tIp").value : pick);
   [...$("#tFiles").files].forEach(f => form.append("files", f));
   try {
     const r = await api("/api/tickets", {method: "POST", body: form});

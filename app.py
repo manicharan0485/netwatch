@@ -534,6 +534,27 @@ def _ticket_payload():
     return request.get_json(silent=True) or {}
 
 
+def _resolve_device(ref):
+    """Turn what someone typed into a device address.
+
+    Accepts an IP address, a device name (hostname) or a MAC address of a device
+    NetWatch knows. Returns (ip_or_None, problem_message_or_None).
+    """
+    ref = (ref or "").strip()
+    if not ref:
+        return None, None
+    try:
+        return str(ipaddress.ip_address(ref)), None
+    except ValueError:
+        pass
+    row = db.one("SELECT ip FROM devices WHERE LOWER(hostname)=LOWER(?)"
+                 " OR UPPER(mac)=UPPER(?) ORDER BY last_seen DESC LIMIT 1", (ref, ref))
+    if row and row["ip"]:
+        return row["ip"], None
+    return None, (f"We could not find a device called '{ref}'. Pick it from the list, "
+                  "or type its address such as 192.168.1.20 (not 192.168.1.x).")
+
+
 def _uploads():
     """Checked uploads from the request, or raise ValueError with a plain message."""
     files = [f for f in request.files.getlist("files") if f and f.filename]
@@ -555,12 +576,9 @@ def create_ticket_api():
     title = str(body.get("title", "")).strip()
     if len(title) < 3:
         return jsonify({"error": "Describe the problem in a few words (at least 3 letters)"}), 400
-    ip = str(body.get("ip", "")).strip() or None
-    if ip:
-        try:
-            ipaddress.ip_address(ip)
-        except ValueError:
-            return jsonify({"error": "The device address is not valid"}), 400
+    ip, problem = _resolve_device(str(body.get("ip", "")))
+    if problem:
+        return jsonify({"error": problem}), 400
     try:
         uploads = _uploads()        # check every file before anything is saved
     except ValueError as exc:
