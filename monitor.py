@@ -72,6 +72,9 @@ class Monitor:
         self.bytes_window = defaultdict(deque) # src -> (ts, bytes) for spike check
         self.first_discovery_done = False
         self.last_discovery = None
+        self.packets_seen = 0
+        self.last_packet_time = None
+        self.started = time.time()
         self.sniffing = False
         self.sniff_error = None
 
@@ -210,6 +213,8 @@ class Monitor:
         from scapy.layers.l2 import ARP
 
         now = time.time()
+        self.packets_seen += 1
+        self.last_packet_time = now
         if ARP in pkt:
             self._check_arp(pkt[ARP], now)
             return
@@ -354,4 +359,9 @@ class Monitor:
             "sniff_error": self.sniff_error,
             "interface": self.cfg.get("interface"),
             "tracked_hosts": len(self.stats),
+            "packets_seen": self.packets_seen,
+            "seconds_since_last_packet": (
+                round(time.time() - self.last_packet_time, 1)
+                if self.last_packet_time else None),
+            "uptime_seconds": round(time.time() - self.started),
         }

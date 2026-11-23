@@ -7,6 +7,7 @@ without adding authentication first.
 import json
 import logging
 import os
+import time
 
 from flask import Flask, jsonify, render_template, request
 
@@ -35,13 +36,21 @@ def status():
     unacked = db.one("SELECT COUNT(*) AS n FROM alerts WHERE acknowledged=0")["n"]
     devices = db.one("SELECT COUNT(*) AS n FROM devices")["n"]
     untrusted = db.one("SELECT COUNT(*) AS n FROM devices WHERE trusted=0")["n"]
+    cutoff = time.time() - 2 * CFG.get("discovery_interval_seconds", 120)
+    online = db.one("SELECT COUNT(*) AS n FROM devices WHERE last_seen>=?", (cutoff,))["n"]
     return jsonify({**monitor.status(), "unacked_alerts": unacked,
-                    "devices": devices, "untrusted_devices": untrusted})
+                    "devices": devices, "devices_online": online,
+                    "untrusted_devices": untrusted})
 
 
 @app.get("/api/devices")
 def devices():
-    return jsonify(db.query("SELECT * FROM devices ORDER BY last_seen DESC"))
+    # A device is "online" if discovery saw it within the last two discovery intervals.
+    cutoff = time.time() - 2 * CFG.get("discovery_interval_seconds", 120)
+    rows = db.query("SELECT * FROM devices ORDER BY last_seen DESC")
+    for r in rows:
+        r["online"] = r["last_seen"] >= cutoff
+    return jsonify(rows)
 
 
 @app.post("/api/devices/<mac>/trust")

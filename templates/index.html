@@ -89,7 +89,7 @@
     <div class="notice hidden" id="discoveryNotice" style="margin-bottom:12px"></div>
     <div class="panel">
       <table>
-        <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>First seen</th><th>Last seen</th><th>Trust</th></tr></thead>
+        <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Status</th><th>First seen</th><th>Last seen</th><th>Trust</th></tr></thead>
         <tbody id="devicesBody"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
       </table>
     </div>
@@ -237,12 +237,19 @@ async function loadStatus() {
   const s = await api("/api/status");
   gatewayIp = s.gateway;
   $("#statusline").textContent =
-    `Subnet ${s.subnet} · interface ${s.interface} · ${s.devices} devices (${s.untrusted_devices} untrusted) · ` +
-    (s.sniffing ? "capturing packets" : "capture off");
+    `Subnet ${s.subnet} · interface ${s.interface} · ${s.devices_online}/${s.devices} devices online (${s.untrusted_devices} untrusted) · ` +
+    (s.sniffing ? `${s.packets_seen} packets captured` : "capture off");
   $("#alertCount").textContent = s.unacked_alerts ? `(${s.unacked_alerts})` : "";
 
+  // Explain why the traffic view may be empty.
   const notice = $("#captureNotice");
-  if (s.sniff_error) { notice.textContent = "Packet capture is off: " + s.sniff_error; notice.classList.remove("hidden"); }
+  let hint = null;
+  if (s.sniff_error) hint = "Packet capture is off: " + s.sniff_error;
+  else if (s.sniffing && s.packets_seen === 0 && s.uptime_seconds > 30)
+    hint = `No packets captured on interface "${s.interface}" after ${s.uptime_seconds}s. Check the interface name in config.json (run "ip -br addr") and that the app runs with sudo.`;
+  else if (s.packets_seen > 50 && s.tracked_hosts <= 2)
+    hint = "Only this machine's own traffic is visible. On Wi-Fi, or on a switch without a mirror port, your computer only receives its own packets and broadcasts. To see other devices, use a router or switch that mirrors traffic to your machine, or a monitor-mode Wi-Fi adapter.";
+  if (hint) { notice.textContent = hint; notice.classList.remove("hidden"); }
   else notice.classList.add("hidden");
 
   // Explain discovery problems instead of showing an empty device list.
@@ -261,6 +268,7 @@ async function loadDevices() {
   $("#devicesBody").innerHTML = rows.length ? rows.map(d => `
     <tr>
       <td>${ipLink(d.ip)}</td><td class="mono">${esc(d.mac)}</td><td>${esc(d.hostname || "unknown")}</td>
+      <td>${d.online ? '<span class="sev sev-low">online</span>' : '<span class="muted">offline</span>'}</td>
       <td>${fmtTime(d.first_seen)}</td><td>${fmtTime(d.last_seen)}</td>
       <td>${d.trusted ? '<span class="muted">trusted</span>' :
         `<button class="btn secondary" data-trust="${esc(d.mac)}">Trust</button>`}</td>
