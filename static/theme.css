@@ -37,6 +37,7 @@
 }
 
 body {
+  font-size: 16px; line-height: 1.5;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
   background: var(--nw-bg);
   color: var(--nw-text);
@@ -69,14 +70,14 @@ header strong { font-size: 18px; letter-spacing: -0.01em; }
 }
 
 /* ---------- layout */
-main { max-width: 980px; padding: 24px 20px 40px; }
+main { max-width: 1680px; margin: 0 auto; padding: clamp(18px, 2.6vw, 40px); }
 
 /* ---------- status card */
 .light {
   background: var(--nw-surface);
   border: 1px solid var(--nw-line);
   border-radius: 20px;
-  padding: 26px 28px;
+  padding: 32px 38px;
   box-shadow: var(--nw-shadow);
   position: relative;
   overflow: hidden;
@@ -98,7 +99,7 @@ main { max-width: 980px; padding: 24px 20px 40px; }
 .dot.yellow { background: var(--nw-yellow); box-shadow: 0 0 0 8px rgba(217,119,6,.14), 0 6px 18px rgba(217,119,6,.35); }
 .dot.red { background: var(--nw-red); box-shadow: 0 0 0 8px rgba(220,38,38,.14), 0 6px 18px rgba(220,38,38,.35); animation: nw-pulse 2s ease-in-out infinite; }
 @keyframes nw-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-.headline { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.headline { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
 .reasons { color: var(--nw-muted); margin-top: 6px; }
 .counts { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
 .counts:empty { display: none; }
@@ -109,13 +110,13 @@ main { max-width: 980px; padding: 24px 20px 40px; }
 
 /* ---------- big buttons */
 .buttons {
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 14px;
-  margin: 22px 0;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
+  margin: 28px 0;
 }
 .big {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
-  min-height: 112px; padding: 18px 18px 16px;
+  min-height: 132px; padding: 22px 22px 20px;
   text-align: left;
   background: var(--nw-surface);
   border: 1px solid var(--nw-line);
@@ -151,7 +152,7 @@ main { max-width: 980px; padding: 24px 20px 40px; }
   background: var(--nw-surface);
   border: 1px solid var(--nw-line);
   border-radius: var(--nw-radius);
-  padding: 22px;
+  padding: 28px 30px;
   box-shadow: var(--nw-shadow);
   margin-bottom: 18px;
 }
