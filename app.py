@@ -155,7 +155,92 @@ def scan_detail(scan_id):
     return jsonify(scan)
 
 
+_location = {"at": 0.0, "data": None}
+
+
+def public_location():
+    """Geolocate this network's public IP (the router's address on the internet).
+
+    Devices on your LAN have private addresses and cannot be geolocated, so
+    this is the only location the app can report. It is cached for an hour.
+    """
+    import urllib.request
+    if _location["data"] and time.time() - _location["at"] < 3600:
+        return _location["data"]
+    try:
+        req = urllib.request.Request("https://ipwho.is/",
+                                     headers={"User-Agent": "netwatch/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            d = json.load(resp)
+        if not d.get("success", False):
+            raise ValueError(d.get("message", "lookup failed"))
+        conn = d.get("connection") or {}
+        data = {
+            "public_ip": d.get("ip"),
+            "city": d.get("city"),
+            "region": d.get("region"),
+            "country": d.get("country"),
+            "isp": conn.get("isp"),
+            "timezone": (d.get("timezone") or {}).get("id"),
+        }
+    except Exception as exc:  # offline, rate limited, etc.
+        data = {"error": f"Location unavailable: {exc}"}
+    _location.update(at=time.time(), data=data)
+    return data
+
+
+@app.get("/api/summary")
+def summary():
+    cutoff = time.time() - 2 * CFG.get("discovery_interval_seconds", 120)
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    for row in db.query("SELECT vuln_summary FROM devices WHERE vuln_summary IS NOT NULL"):
+        for sev, n in json.loads(row["vuln_summary"]).items():
+            if sev in counts:
+                counts[sev] += n
+    total = db.one("SELECT COUNT(*) AS n FROM devices")["n"]
+    online = db.one("SELECT COUNT(*) AS n FROM devices WHERE last_seen>=?", (cutoff,))["n"]
+    scanned = db.one("SELECT COUNT(*) AS n FROM devices WHERE last_scanned IS NOT NULL")["n"]
+    return jsonify({
+        "subnet": monitor.subnet,
+        "devices_total": total,
+        "devices_online": online,
+        "devices_scanned": scanned,
+        "scanning_now": scanner.state["current_ip"],
+        "auto_scan": scanner.state["auto_enabled"],
+        "vulnerabilities": counts,
+        "network_location": public_location(),
+        "running_as_root": monitor.status()["running_as_root"],
+    })
+
+
+@app.get("/api/vuln-overview")
+def vuln_overview():
+    cutoff = time.time() - 2 * CFG.get("discovery_interval_seconds", 120)
+    rows = db.query("SELECT * FROM devices ORDER BY last_seen DESC")
+    for r in rows:
+        r["online"] = r["last_seen"] >= cutoff
+        r["vulns"] = json.loads(r["vuln_summary"]) if r["vuln_summary"] else None
+        r.pop("vuln_summary", None)
+    return jsonify(rows)
+
+
+@app.get("/api/device-findings/<ip>")
+def device_findings(ip):
+    scan = db.one("SELECT * FROM scans WHERE ip=? AND status='done' ORDER BY id DESC LIMIT 1",
+                  (ip,))
+    if scan is None:
+        return jsonify({"ip": ip, "scan": None, "findings": []})
+    findings = db.query(
+        "SELECT * FROM findings WHERE scan_id=? ORDER BY "
+        "CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 "
+        "WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END DESC, port",
+        (scan["id"],))
+    return jsonify({"ip": ip, "scan": scan, "findings": findings})
+
+
 if __name__ == "__main__":
+    if CFG.get("auto_scan", True):
+        threading.Thread(target=scanner.auto_scan_loop, args=(CFG,), daemon=True).start()
     monitor.start()
     app.run(host=CFG.get("bind_host", "127.0.0.1"), port=CFG.get("port", 5000),
             debug=False, threaded=True)

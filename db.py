@@ -56,9 +56,24 @@ def connect():
     return c
 
 
+DEVICE_COLUMNS = {
+    "os_guess": "TEXT",
+    "os_accuracy": "INTEGER",
+    "os_family": "TEXT",
+    "open_ports": "TEXT",
+    "last_scanned": "REAL",
+    "vuln_summary": "TEXT",   # JSON: {"critical": n, "high": n, ...}
+}
+
+
 def init_db():
     with connect() as c:
         c.executescript(SCHEMA)
+        # Upgrade databases created by earlier versions of NetWatch.
+        existing = {r["name"] for r in c.execute("PRAGMA table_info(devices)")}
+        for name, ddl in DEVICE_COLUMNS.items():
+            if name not in existing:
+                c.execute(f"ALTER TABLE devices ADD COLUMN {name} {ddl}")
 
 
 def write(sql, params=()):

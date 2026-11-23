@@ -8,6 +8,17 @@ A local web dashboard that watches your home or office network:
 - **Attack alerts**: pop-ups for possible port scans, SYN floods, ARP spoofing (someone pretending to be your router) and unusual traffic spikes.
 - **Vulnerabilities**: service and version scan of a device you choose, with each finding's severity, a description and how to fix it.
 
+## Automatic network scan
+
+On start, NetWatch finds the network it is connected to and scans every device on it:
+
+- **Device count:** total known devices and how many are online right now.
+- **OS and version guess:** from nmap OS detection (needs `sudo`).
+- **Open ports and vulnerabilities:** each device is checked and listed with severity and fix steps.
+- **Public location:** the network's internet address is geolocated (city, region, ISP). Devices on your LAN have private addresses and cannot be geolocated.
+
+Devices are scanned one at a time and rescanned every `auto_scan_hours` (24 by default). Set `auto_scan` to `false` in `config.json` to turn this off and scan only when you click Start scan.
+
 ## Setup (Kali Linux)
 
 ```bash

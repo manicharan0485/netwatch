@@ -3,13 +3,17 @@
 What it does:
   1. Checks the target is inside the networks listed in config.json (private
      ranges by default) so the tool cannot be pointed at arbitrary internet hosts.
-  2. Runs nmap service/version detection (-sV). This only connects to ports and
-     reads banners; it does not send exploit payloads or try passwords.
+  2. Runs nmap service/version detection (-sV), plus OS detection (-O) when
+     running as root. This only connects to ports and reads banners; it does
+     not send exploit payloads or try passwords.
   3. Matches open ports and detected software versions against vulns.json and
      stores each match with a description and a fix.
+  4. Automatically scans every device found on the monitored network, and
+     rescans each one on a schedule (auto_scan_hours in config.json).
 """
 import ipaddress
 import json
+import logging
 import os
 import re
 import subprocess
@@ -19,11 +23,16 @@ import xml.etree.ElementTree as ET
 
 import db
 
+log = logging.getLogger("netwatch.scanner")
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(BASE, "vulns.json")) as fh:
     RULES = json.load(fh)
 
 SEVERITY_ORDER = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+
+# Shared state for the dashboard: which device is being scanned right now.
+state = {"current_ip": None, "auto_enabled": False, "last_full_pass": None}
 
 
 class ScopeError(ValueError):
@@ -86,14 +95,13 @@ def match_findings(open_ports):
     return findings
 
 
-def parse_nmap_xml(xml_text):
-    root = ET.fromstring(xml_text)
+def parse_nmap_xml(root):
     ports = []
     for port in root.iter("port"):
         if port.get("protocol") != "tcp":
             continue
-        state = port.find("state")
-        if state is None or state.get("state") != "open":
+        state_el = port.find("state")
+        if state_el is None or state_el.get("state") != "open":
             continue
         svc = port.find("service")
         ports.append({
@@ -103,6 +111,21 @@ def parse_nmap_xml(xml_text):
             "version": svc.get("version", "") if svc is not None else "",
         })
     return ports
+
+
+def parse_os(root):
+    """Best OS guess from nmap -O output: name (with version), accuracy and family."""
+    best = None
+    for m in root.findall("host/os/osmatch"):
+        accuracy = int(m.get("accuracy", "0"))
+        if best is None or accuracy > best["os_accuracy"]:
+            cls = m.find("osclass")
+            best = {
+                "os_guess": m.get("name"),
+                "os_accuracy": accuracy,
+                "os_family": cls.get("osfamily", "") if cls is not None else "",
+            }
+    return best or {}
 
 
 def start_scan(ip, cfg):
@@ -118,14 +141,21 @@ def start_scan(ip, cfg):
 
 def _run(scan_id, ip, cfg):
     try:
-        cmd = ["nmap", "-Pn", "-sV", "-T4", "--top-ports",
-               str(cfg.get("scan_top_ports", 200)), "-oX", "-", ip]
+        is_root = hasattr(os, "geteuid") and os.geteuid() == 0
+        cmd = ["nmap", "-Pn", "-sV", "-T4"]
+        if is_root:
+            cmd.append("-O")   # OS detection needs root
+        cmd += ["--top-ports", str(cfg.get("scan_top_ports", 200)), "-oX", "-", ip]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         if proc.returncode != 0 and not proc.stdout:
             raise RuntimeError(proc.stderr.strip() or "nmap failed")
-        open_ports = parse_nmap_xml(proc.stdout)
+
+        root = ET.fromstring(proc.stdout)
+        open_ports = parse_nmap_xml(root)
         findings = match_findings(open_ports)
+        counts = {s: 0 for s in SEVERITY_ORDER}
         for f in findings:
+            counts[f["severity"]] += 1
             db.write(
                 "INSERT INTO findings (scan_id, ip, port, service, severity, title,"
                 " description, fix) VALUES (?,?,?,?,?,?,?,?)",
@@ -139,9 +169,64 @@ def _run(scan_id, ip, cfg):
                     ip=ip, dedupe_key=f"vuln:{ip}:{f['port']}:{f['title']}",
                     window_seconds=86400,
                 )
+
+        info = parse_os(root) if is_root else {}
+        db.write(
+            "UPDATE devices SET os_guess=?, os_accuracy=?, os_family=?, open_ports=?,"
+            " last_scanned=?, vuln_summary=? WHERE ip=?",
+            (info.get("os_guess"), info.get("os_accuracy"), info.get("os_family"),
+             ",".join(str(p["port"]) for p in open_ports), time.time(),
+             json.dumps(counts), ip),
+        )
         summary = f"{len(open_ports)} open TCP ports, {len(findings)} findings"
         db.write("UPDATE scans SET status=?, finished=?, summary=? WHERE id=?",
                  ("done", time.time(), summary, scan_id))
     except Exception as exc:
         db.write("UPDATE scans SET status=?, finished=?, summary=? WHERE id=?",
                  ("failed", time.time(), str(exc), scan_id))
+        # Record the attempt so a broken host is not retried every minute.
+        db.write("UPDATE devices SET last_scanned=? WHERE ip=?", (time.time(), ip))
+
+
+def scan_device(ip, cfg):
+    """Scan one device in the current thread and return its scan id."""
+    scan_id = db.write(
+        "INSERT INTO scans (ip, started, status) VALUES (?,?,?)",
+        (ip, time.time(), "running"),
+    )
+    state["current_ip"] = ip
+    try:
+        _run(scan_id, ip, cfg)
+    finally:
+        state["current_ip"] = None
+    return scan_id
+
+
+def auto_scan_loop(cfg):
+    """Scan every online device that has never been scanned, or is due a rescan.
+
+    Devices are scanned one at a time so the network is not flooded.
+    """
+    state["auto_enabled"] = True
+    interval = cfg.get("auto_scan_hours", 24) * 3600
+    online_window = 2 * cfg.get("discovery_interval_seconds", 120)
+    while True:
+        try:
+            now = time.time()
+            due = db.query(
+                "SELECT ip FROM devices WHERE last_seen>=?"
+                " AND (last_scanned IS NULL OR last_scanned<?)"
+                " ORDER BY last_seen DESC",
+                (now - online_window, now - interval),
+            )
+            for row in due:
+                try:
+                    check_target(row["ip"], cfg["allowed_networks"])
+                except ScopeError:
+                    continue
+                scan_device(row["ip"], cfg)
+            if due:
+                state["last_full_pass"] = time.time()
+        except Exception:
+            log.exception("auto scan pass failed")
+        time.sleep(60)

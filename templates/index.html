@@ -86,6 +86,16 @@
 </nav>
 <main>
   <section id="tab-devices" class="tab">
+    <div class="panel" id="summaryPanel">
+      <div class="row" style="gap:28px">
+        <div><div class="muted" style="font-size:12px">DEVICES ONLINE</div><div style="font-size:26px;font-weight:700" id="sumOnline">–</div></div>
+        <div><div class="muted" style="font-size:12px">KNOWN DEVICES</div><div style="font-size:26px;font-weight:700" id="sumTotal">–</div></div>
+        <div><div class="muted" style="font-size:12px">NETWORK</div><div class="mono" id="sumSubnet">–</div></div>
+        <div><div class="muted" style="font-size:12px">PUBLIC LOCATION</div><div id="sumLocation" class="muted">–</div></div>
+        <div><div class="muted" style="font-size:12px">VULNERABILITIES</div><div id="sumVulns" class="muted">–</div></div>
+      </div>
+      <div class="muted" id="sumScan" style="margin-top:10px;font-size:13px"></div>
+    </div>
     <div class="panel">
       <div class="row">
         <strong>Network to monitor</strong>
@@ -102,7 +112,7 @@
     <div class="notice hidden" id="discoveryNotice" style="margin-bottom:12px"></div>
     <div class="panel">
       <table>
-        <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Status</th><th>First seen</th><th>Last seen</th><th>Trust</th></tr></thead>
+        <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Status</th><th>OS (guess)</th><th>Vulnerabilities</th><th>First seen</th><th>Last seen</th><th>Trust</th></tr></thead>
         <tbody id="devicesBody"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
       </table>
     </div>
@@ -132,6 +142,14 @@
   </section>
 
   <section id="tab-vulns" class="tab hidden">
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><strong>Devices on your network</strong>
+        <span class="muted" id="vulnSummaryLine" style="font-size:13px"></span></div>
+      <table style="margin-top:8px">
+        <thead><tr><th>IP</th><th>Name</th><th>OS (guess)</th><th>Open ports</th><th>Vulnerabilities</th><th>Last scanned</th></tr></thead>
+        <tbody id="vulnOverviewBody"><tr><td colspan="6" class="muted">Waiting for the first scan…</td></tr></tbody>
+      </table>
+    </div>
     <div class="notice" style="margin-bottom:12px">
       Only scan devices you own or are authorized to test. Scans are limited to private
       networks listed in config.json. The scanner checks open ports and software versions
@@ -283,6 +301,8 @@ async function loadDevices() {
     <tr>
       <td>${ipLink(d.ip)}</td><td class="mono">${esc(d.mac)}</td><td>${esc(d.hostname || "unknown")}</td>
       <td>${d.online ? '<span class="sev sev-low">online</span>' : '<span class="muted">offline</span>'}</td>
+      <td>${osText(d)}</td>
+      <td>${vulnBadges(d.vuln_summary)}</td>
       <td>${fmtTime(d.first_seen)}</td><td>${fmtTime(d.last_seen)}</td>
       <td>${d.trusted ? '<span class="muted">trusted</span>' :
         `<button class="btn secondary" data-trust="${esc(d.mac)}">Trust</button>`}</td>
@@ -407,7 +427,68 @@ $("#discoverBtn").onclick = async () => {
   refresh();
 };
 
+// ---------- device details, summary and vulnerability overview
+const osText = (d) => d.os_guess
+  ? `${esc(d.os_guess)}${d.os_accuracy ? ` <span class="muted">(${d.os_accuracy}%)</span>` : ""}`
+  : (d.last_scanned ? '<span class="muted">unknown</span>' : '<span class="muted">pending scan</span>');
+function vulnBadges(raw) {
+  if (!raw) return '<span class="muted">not scanned yet</span>';
+  const v = JSON.parse(raw);
+  const parts = ["critical", "high", "medium", "low"].filter(s => v[s] > 0)
+    .map(s => `<span class="sev sev-${s}">${v[s]} ${s}</span>`);
+  return parts.length ? parts.join(" ") : '<span class="sev sev-low">none found</span>';
+}
+async function loadSummary() {
+  const s = await api("/api/summary");
+  $("#sumOnline").textContent = s.devices_online;
+  $("#sumTotal").textContent = s.devices_total;
+  $("#sumSubnet").textContent = s.subnet || "–";
+  const loc = s.network_location || {};
+  $("#sumLocation").textContent = loc.error ? loc.error :
+    [loc.city, loc.region, loc.country].filter(Boolean).join(", ") + (loc.isp ? ` · ${loc.isp}` : "");
+  const v = s.vulnerabilities;
+  $("#sumVulns").innerHTML = ["critical", "high", "medium", "low"]
+    .map(k => `<span class="sev sev-${k}">${v[k]} ${k}</span>`).join(" ");
+  let line = `${s.devices_scanned} of ${s.devices_total} devices scanned.`;
+  if (s.scanning_now) line += ` Scanning ${s.scanning_now} now.`;
+  else if (s.auto_scan) line += " Automatic scanning is on.";
+  if (!s.running_as_root) line += " Run with sudo for OS detection.";
+  $("#sumScan").textContent = line;
+}
+async function loadVulnOverview() {
+  const rows = await api("/api/vuln-overview");
+  $("#vulnSummaryLine").textContent = `${rows.length} devices · ${rows.filter(r => r.online).length} online`;
+  $("#vulnOverviewBody").innerHTML = rows.length ? rows.map(d => `
+    <tr>
+      <td>${ipLink(d.ip)}</td><td>${esc(d.hostname || "unknown")}</td><td>${osText(d)}</td>
+      <td class="mono">${esc(d.open_ports || (d.last_scanned ? "none" : "–"))}</td>
+      <td>${vulnBadges(d.vuln_summary)}</td>
+      <td>${d.last_scanned ? fmtTime(d.last_scanned) : '<span class="muted">pending</span>'}</td>
+    </tr>`).join("") : '<tr><td colspan="6" class="muted">No devices found yet.</td></tr>';
+}
+async function showDeviceFindings(ip) {
+  const r = await api("/api/device-findings/" + encodeURIComponent(ip));
+  $("#findingsPanel").classList.remove("hidden");
+  $("#findingsTitle").textContent = `Vulnerabilities on ${ip}`;
+  if (!r.scan) { $("#findingsBody").innerHTML = '<span class="muted">Not scanned yet.</span>'; return; }
+  if (!r.findings.length) { $("#findingsBody").innerHTML = `<span class="muted">No known issues found. ${esc(r.scan.summary || "")}</span>`; return; }
+  $("#findingsBody").innerHTML = r.findings.map(f => `
+    <div class="panel" style="margin-bottom:10px">
+      <div class="row" style="justify-content:space-between"><strong>${esc(f.title)}</strong>${sevBadge(f.severity)}</div>
+      <div class="muted mono" style="margin-top:4px">Port ${f.port} · ${esc(f.service)}</div>
+      <div style="margin-top:6px">${esc(f.description)}</div>
+      <div class="fix"><strong>How to fix:</strong> ${esc(f.fix)}</div>
+    </div>`).join("");
+  $("#findingsPanel").scrollIntoView({behavior: "smooth"});
+}
+document.addEventListener("click", e => {
+  const row = e.target.closest("#vulnOverviewBody tr");
+  if (row && row.querySelector("[data-ip]")) showDeviceFindings(row.querySelector("[data-ip]").dataset.ip);
+});
+
 function refresh() {
+  loadSummary().catch(() => {});
+  loadVulnOverview().catch(() => {});
   loadStatus().catch(() => {});
   const active = document.querySelector("nav button.active").dataset.tab;
   if (active === "devices") loadDevices().catch(() => {});
@@ -416,7 +497,7 @@ function refresh() {
   if (active === "vulns") loadScans().catch(() => {});
 }
 
-loadDevices(); loadTraffic(); loadStatus(); pollAlerts();
+loadDevices(); loadTraffic(); loadStatus(); pollAlerts(); loadSummary().catch(() => {}); loadVulnOverview().catch(() => {});
 setInterval(() => { pollAlerts().catch(() => {}); loadStatus().catch(() => {}); }, 4000);
 setInterval(refresh, 10000);
 </script>

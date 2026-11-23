@@ -9,6 +9,8 @@
   ],
   "discovery_interval_seconds": 120,
   "scan_top_ports": 200,
+  "auto_scan": true,
+  "auto_scan_hours": 24,
   "learn_on_first_scan": true,
   "bind_host": "127.0.0.1",
   "port": 5000,
