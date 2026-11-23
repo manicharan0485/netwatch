@@ -505,6 +505,19 @@ def device_findings(ip):
     return jsonify({"ip": ip, "scan": scan, "findings": findings})
 
 
+@app.get("/api/traffic-history")
+def traffic_history():
+    """Download and upload per minute, for the whole network or one device (?ip=)."""
+    minutes = request.args.get("minutes", 60, type=int)
+    ip = request.args.get("ip") or None
+    if ip:
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            return jsonify({"error": "Not a valid IP address"}), 400
+    return jsonify(monitor.history_series(minutes, ip))
+
+
 @app.get("/api/problems")
 def problems():
     """Every device that has findings, with its steps, for the Fix problems screen."""

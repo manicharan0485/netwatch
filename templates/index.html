@@ -121,6 +121,25 @@
   <section id="tab-traffic" class="tab hidden">
     <div class="notice hidden" id="captureNotice" style="margin-bottom:12px"></div>
     <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <strong>Traffic over time</strong>
+        <div class="row">
+          <select id="histIp" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px">
+            <option value="">Whole network</option>
+          </select>
+          <select id="histMinutes" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px">
+            <option value="30">Last 30 min</option>
+            <option value="60" selected>Last 60 min</option>
+            <option value="120">Last 2 hours</option>
+          </select>
+        </div>
+      </div>
+      <div id="chartBox" style="width:100%;margin-top:10px;color:var(--muted)">
+        <canvas id="trafficChart"></canvas>
+      </div>
+      <div class="muted" id="histNote" style="font-size:13px;margin-top:6px"></div>
+    </div>
+    <div class="panel">
       <table>
         <thead><tr><th>IP</th><th>Received</th><th>Sent</th><th>Packets</th><th>Top protocols</th><th>Last seen</th></tr></thead>
         <tbody id="trafficBody"><tr><td colspan="6" class="muted">No traffic yet.</td></tr></tbody>
@@ -191,6 +210,7 @@
   </div>
 </div>
 
+<script src="/static/chart.js"></script>
 <script>
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -312,6 +332,26 @@ async function loadDevices() {
     loadDevices(); loadStatus();
   });
 }
+
+async function loadHistory() {
+  const ip = $("#histIp").value;
+  const minutes = $("#histMinutes").value;
+  const s = await api(`/api/traffic-history?minutes=${minutes}${ip ? "&ip=" + encodeURIComponent(ip) : ""}`);
+  drawTrafficChart($("#trafficChart"), s);
+  const any = s.down.some(v => v > 0) || s.up.some(v => v > 0);
+  $("#histNote").textContent = any ? "" :
+    "No traffic recorded in this period yet. Traffic appears only for packets this computer can see (see the note above).";
+}
+async function loadHistoryDevices() {
+  const rows = await api("/api/devices");
+  const sel = $("#histIp"), keep = sel.value;
+  sel.innerHTML = '<option value="">Whole network</option>' +
+    rows.filter(d => d.ip).map(d => `<option value="${esc(d.ip)}">${esc(d.hostname || d.ip)} (${esc(d.ip)})</option>`).join("");
+  sel.value = keep;
+}
+$("#histIp").onchange = () => loadHistory().catch(() => {});
+$("#histMinutes").onchange = () => loadHistory().catch(() => {});
+window.addEventListener("resize", () => loadHistory().catch(() => {}));
 
 async function loadTraffic() {
   const rows = await api("/api/traffic");
@@ -492,7 +532,7 @@ function refresh() {
   loadStatus().catch(() => {});
   const active = document.querySelector("nav button.active").dataset.tab;
   if (active === "devices") loadDevices().catch(() => {});
-  if (active === "traffic") loadTraffic().catch(() => {});
+  if (active === "traffic") { loadTraffic().catch(() => {}); loadHistoryDevices().catch(() => {}); loadHistory().catch(() => {}); }
   if (active === "alerts") refreshAlertsTable().catch(() => {});
   if (active === "vulns") loadScans().catch(() => {});
 }

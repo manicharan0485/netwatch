@@ -75,6 +75,8 @@ class Monitor:
         self.packets_seen = 0
         self.last_packet_time = None
         self.started = time.time()
+        # minute (unix time, rounded down) -> {"down": bytes, "up": bytes, "ips": {ip: [down, up]}}
+        self.history = {}
         self.sniffing = False
         self.sniff_error = None
 
@@ -233,6 +235,7 @@ class Monitor:
             proto = "ICMP"
 
         with self.lock:
+            self._record_history(src, dst, length, now)
             s_src = self.stats[src]
             s_src["bytes_out"] += length
             s_src["packets"] += 1
@@ -318,6 +321,51 @@ class Monitor:
             )
 
     # ------------------------------------------------------------ queries
+
+    def _record_history(self, src, dst, length, now):
+        """Add one packet to the per-minute history. Called with self.lock held."""
+        try:
+            net = ipaddress.ip_network(self.subnet, strict=False)
+            s_addr, d_addr = ipaddress.ip_address(src), ipaddress.ip_address(dst)
+        except ValueError:
+            return
+        s_local, d_local = s_addr in net, d_addr in net
+        if not (s_local or d_local):
+            return  # not traffic involving this network
+
+        minute = int(now // 60) * 60
+        bucket = self.history.get(minute)
+        if bucket is None:
+            bucket = self.history[minute] = {"down": 0, "up": 0, "ips": {}}
+            cutoff = minute - 2 * 3600          # keep two hours
+            for old in [m for m in self.history if m < cutoff]:
+                del self.history[old]
+
+        if d_local and not s_local:             # from outside into the network
+            bucket["down"] += length
+        elif s_local and not d_local:           # from the network to outside
+            bucket["up"] += length
+        if d_local:
+            bucket["ips"].setdefault(dst, [0, 0])[0] += length
+        if s_local:
+            bucket["ips"].setdefault(src, [0, 0])[1] += length
+
+    def history_series(self, minutes=60, ip=None):
+        """Per-minute download and upload in bytes for the last `minutes` minutes."""
+        minutes = max(1, min(int(minutes), 120))
+        now_min = int(time.time() // 60) * 60
+        labels, down, up = [], [], []
+        with self.lock:
+            for m in range(now_min - (minutes - 1) * 60, now_min + 60, 60):
+                bucket = self.history.get(m)
+                if ip:
+                    d, u = (bucket["ips"].get(ip, [0, 0]) if bucket else [0, 0])
+                else:
+                    d, u = (bucket["down"], bucket["up"]) if bucket else (0, 0)
+                labels.append(time.strftime("%H:%M", time.localtime(m)))
+                down.append(d)
+                up.append(u)
+        return {"labels": labels, "down": down, "up": up, "ip": ip}
 
     def traffic_summary(self):
         with self.lock:
