@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetWatch</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e6e9ef;
+    --muted: #8b93a7; --accent: #5b8cff;
+    --critical: #ff4d6d; --high: #ff8a3d; --medium: #f5c542; --low: #4cc9a0; --info: #8b93a7;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f6fa; --panel: #ffffff; --line: #dfe3ec; --text: #1b1f2a; --muted: #5d6478; }
+  }
+  :root[data-theme="dark"] { --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e6e9ef; --muted: #8b93a7; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+           padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 18px; margin: 0; }
+  .status { color: var(--muted); font-size: 13px; }
+  nav { display: flex; gap: 6px; padding: 10px 16px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+  nav button { background: none; border: 1px solid transparent; color: var(--muted); padding: 7px 12px;
+               border-radius: 8px; cursor: pointer; white-space: nowrap; font: inherit; }
+  nav button.active { color: var(--text); border-color: var(--line); background: var(--panel); }
+  main { padding: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 16px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 480px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  a.ip, button.link { color: var(--accent); cursor: pointer; text-decoration: none; background: none; border: 0; padding: 0; font: inherit; }
+  a.ip:hover, button.link:hover { text-decoration: underline; }
+  .sev { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; color: #111; }
+  .sev-critical { background: var(--critical); color: #fff; }
+  .sev-high { background: var(--high); }
+  .sev-medium { background: var(--medium); }
+  .sev-low { background: var(--low); }
+  .sev-info { background: var(--info); color: #fff; }
+  .muted { color: var(--muted); }
+  .btn { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; font: inherit; }
+  .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  input[type=text] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+                     padding: 8px 10px; font: inherit; min-width: 200px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .notice { border-left: 3px solid var(--medium); padding: 8px 12px; background: var(--bg); border-radius: 6px; color: var(--muted); font-size: 13px; }
+  .fix { margin-top: 6px; padding: 8px 10px; background: var(--bg); border-radius: 8px; font-size: 13px; }
+  .hidden { display: none; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+
+  /* toast pop-ups */
+  #toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 10px; z-index: 50; max-width: min(380px, calc(100vw - 32px)); }
+  .toast { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--high); border-radius: 10px;
+           padding: 12px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .toast.critical { border-left-color: var(--critical); }
+  .toast.medium { border-left-color: var(--medium); }
+  .toast .title { font-weight: 700; margin-bottom: 4px; }
+  .toast .actions { margin-top: 8px; display: flex; gap: 8px; }
+
+  /* modal */
+  #modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: flex-start; justify-content: center; padding: 24px 12px; z-index: 40; overflow-y: auto; }
+  #modal.open { display: flex; }
+  #modal .box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: min(960px, 100%); padding: 16px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 13px; }
+  .kv div:nth-child(odd) { color: var(--muted); }
+
+  @media (max-width: 600px) { main { padding: 10px; } .panel { padding: 10px; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>NetWatch</h1>
+    <div class="status" id="statusline">Loading status…</div>
+  </div>
+  <div class="row">
+    <button class="btn secondary" id="discoverBtn">Scan network now</button>
+  </div>
+</header>
+<nav>
+  <button data-tab="devices" class="active">Devices</button>
+  <button data-tab="traffic">Traffic</button>
+  <button data-tab="alerts">Alerts <span id="alertCount" class="muted"></span></button>
+  <button data-tab="vulns">Vulnerabilities</button>
+</nav>
+<main>
+  <section id="tab-devices" class="tab">
+    <div class="panel">
+      <table>
+        <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>First seen</th><th>Last seen</th><th>Trust</th></tr></thead>
+        <tbody id="devicesBody"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-traffic" class="tab hidden">
+    <div class="notice hidden" id="captureNotice" style="margin-bottom:12px"></div>
+    <div class="panel">
+      <table>
+        <thead><tr><th>IP</th><th>Received</th><th>Sent</th><th>Packets</th><th>Top protocols</th><th>Last seen</th></tr></thead>
+        <tbody id="trafficBody"><tr><td colspan="6" class="muted">No traffic yet.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-alerts" class="tab hidden">
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <strong>Alerts</strong>
+        <button class="btn secondary" id="ackAll">Mark all read</button>
+      </div>
+      <table>
+        <thead><tr><th>Time</th><th>Severity</th><th>Alert</th><th>IP</th><th></th></tr></thead>
+        <tbody id="alertsBody"><tr><td colspan="5" class="muted">No alerts.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-vulns" class="tab hidden">
+    <div class="notice" style="margin-bottom:12px">
+      Only scan devices you own or are authorized to test. Scans are limited to private
+      networks listed in config.json. The scanner checks open ports and software versions
+      and does not run exploits or password guessing.
+    </div>
+    <div class="panel">
+      <div class="row">
+        <input type="text" id="scanIp" placeholder="Device IP, e.g. 192.168.1.10">
+        <label class="row muted"><input type="checkbox" id="scanConfirm"> I am authorized to scan this device</label>
+        <button class="btn" id="scanBtn" disabled>Start scan</button>
+      </div>
+      <div id="scanMsg" class="muted" style="margin-top:8px"></div>
+    </div>
+    <div class="panel">
+      <strong>Scan history</strong>
+      <table style="margin-top:8px">
+        <thead><tr><th>#</th><th>IP</th><th>Started</th><th>Status</th><th>Summary</th></tr></thead>
+        <tbody id="scansBody"></tbody>
+      </table>
+    </div>
+    <div class="panel hidden" id="findingsPanel">
+      <div class="row" style="justify-content:space-between"><strong id="findingsTitle"></strong>
+        <button class="btn secondary" id="closeFindings">Close</button></div>
+      <div id="findingsBody" style="margin-top:10px"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toasts"></div>
+
+<div id="modal">
+  <div class="box">
+    <div class="row" style="justify-content:space-between">
+      <strong id="modalTitle">Device</strong>
+      <button class="btn secondary" id="modalClose">Close</button>
+    </div>
+    <div id="modalBody" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtBytes = (n) => {
+  n = Number(n || 0);
+  const u = ["B", "KB", "MB", "GB"]; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(i ? 1 : 0) + " " + u[i];
+};
+const fmtTime = (t) => t ? new Date(t * 1000).toLocaleString() : "";
+const sevBadge = (s) => `<span class="sev sev-${esc(s)}">${esc(s)}</span>`;
+const ipLink = (ip) => `<button class="link mono" data-ip="${esc(ip)}">${esc(ip)}</button>`;
+const api = (path, opts = {}) => fetch(path, {headers: {"Content-Type": "application/json"}, ...opts}).then(async r => {
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+});
+
+// ---------- tabs
+document.querySelectorAll("nav button").forEach(btn => btn.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll(".tab").forEach(t => t.classList.add("hidden"));
+  $("#tab-" + btn.dataset.tab).classList.remove("hidden");
+  refresh();
+}));
+
+// ---------- IP detail modal
+function openIp(ip) {
+  $("#modal").classList.add("open");
+  $("#modalTitle").textContent = "Traffic for " + ip;
+  $("#modalBody").innerHTML = '<span class="muted">Loading…</span>';
+  api("/api/ip/" + encodeURIComponent(ip)).then(d => {
+    const s = d.stats, dev = d.device;
+    let html = '<div class="kv">';
+    html += `<div>IP</div><div class="mono">${esc(ip)}</div>`;
+    html += `<div>MAC</div><div class="mono">${esc(dev?.mac || "unknown")}</div>`;
+    html += `<div>Hostname</div><div>${esc(dev?.hostname || "unknown")}</div>`;
+    if (s) {
+      html += `<div>Received</div><div>${fmtBytes(s.bytes_in)}</div>`;
+      html += `<div>Sent</div><div>${fmtBytes(s.bytes_out)}</div>`;
+      html += `<div>Packets</div><div>${s.packets}</div>`;
+      html += `<div>Protocols</div><div>${esc(Object.entries(s.protocols).map(([k,v]) => k+" ("+v+")").join(", "))}</div>`;
+      html += `<div>Top ports</div><div>${esc(Object.entries(s.top_ports).map(([k,v]) => k+" ("+v+")").join(", ") || "none")}</div>`;
+    } else {
+      html += `<div>Traffic</div><div class="muted">No packets seen from this IP since the monitor started.</div>`;
+    }
+    html += "</div>";
+    html += `<div class="row" style="margin:14px 0"><button class="btn" id="scanFromModal">Scan this device</button></div>`;
+    html += '<strong>Recent packets</strong>';
+    html += '<div class="panel" style="margin-top:8px"><table style="min-width:620px"><thead><tr><th>Time</th><th>Direction</th><th>Proto</th><th>Source</th><th>Destination</th><th>Bytes</th><th>Flags</th></tr></thead><tbody>';
+    if (!d.packets.length) html += '<tr><td colspan="7" class="muted">No recent packets.</td></tr>';
+    d.packets.forEach(p => {
+      const dir = p.src === ip ? "out" : "in";
+      html += `<tr><td class="mono">${new Date(p.ts*1000).toLocaleTimeString()}</td><td>${dir}</td><td>${esc(p.proto)}</td>
+        <td class="mono">${esc(p.src)}${p.sport ? ":" + p.sport : ""}</td>
+        <td class="mono">${esc(p.dst)}${p.dport ? ":" + p.dport : ""}</td><td>${p.length}</td><td class="mono">${esc(p.flags)}</td></tr>`;
+    });
+    html += "</tbody></table></div>";
+    $("#modalBody").innerHTML = html;
+    $("#scanFromModal").onclick = () => { closeModal(); $("nav button[data-tab=vulns]").click(); $("#scanIp").value = ip; };
+  }).catch(e => { $("#modalBody").innerHTML = `<span class="muted">${esc(e.message)}</span>`; });
+}
+function closeModal() { $("#modal").classList.remove("open"); }
+$("#modalClose").onclick = closeModal;
+$("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-ip]");
+  if (b) openIp(b.dataset.ip);
+});
+
+// ---------- status / devices / traffic
+async function loadStatus() {
+  const s = await api("/api/status");
+  $("#statusline").textContent =
+    `Subnet ${s.subnet} · interface ${s.interface} · ${s.devices} devices (${s.untrusted_devices} untrusted) · ` +
+    (s.sniffing ? "capturing packets" : "capture off");
+  $("#alertCount").textContent = s.unacked_alerts ? `(${s.unacked_alerts})` : "";
+  const notice = $("#captureNotice");
+  if (s.sniff_error) { notice.textContent = "Packet capture is off: " + s.sniff_error; notice.classList.remove("hidden"); }
+  else notice.classList.add("hidden");
+}
+
+async function loadDevices() {
+  const rows = await api("/api/devices");
+  $("#devicesBody").innerHTML = rows.length ? rows.map(d => `
+    <tr>
+      <td>${ipLink(d.ip)}</td><td class="mono">${esc(d.mac)}</td><td>${esc(d.hostname || "unknown")}</td>
+      <td>${fmtTime(d.first_seen)}</td><td>${fmtTime(d.last_seen)}</td>
+      <td>${d.trusted ? '<span class="muted">trusted</span>' :
+        `<button class="btn secondary" data-trust="${esc(d.mac)}">Trust</button>`}</td>
+    </tr>`).join("") : '<tr><td colspan="6" class="muted">No devices yet. Run a network scan.</td></tr>';
+  document.querySelectorAll("[data-trust]").forEach(b => b.onclick = async () => {
+    await api(`/api/devices/${encodeURIComponent(b.dataset.trust)}/trust`, {method: "POST"});
+    loadDevices(); loadStatus();
+  });
+}
+
+async function loadTraffic() {
+  const rows = await api("/api/traffic");
+  $("#trafficBody").innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${ipLink(r.ip)}</td><td>${fmtBytes(r.bytes_in)}</td><td>${fmtBytes(r.bytes_out)}</td>
+      <td>${r.packets}</td><td>${esc(Object.keys(r.top_protocols).join(", "))}</td><td>${fmtTime(r.last)}</td>
+    </tr>`).join("") : '<tr><td colspan="6" class="muted">No traffic yet.</td></tr>';
+}
+
+// ---------- alerts + pop-up notifications
+let lastAlertId = 0;
+let seeded = false;
+function toast(a) {
+  const el = document.createElement("div");
+  el.className = "toast " + esc(a.severity);
+  el.innerHTML = `<div class="title">${esc(a.title)}</div>
+    <div class="muted" style="font-size:13px">${esc(a.detail)}</div>
+    <div class="actions">${a.ip ? `<button class="btn" data-ip="${esc(a.ip)}">View ${esc(a.ip)}</button>` : ""}
+    <button class="btn secondary" onclick="this.closest('.toast').remove()">Dismiss</button></div>`;
+  $("#toasts").prepend(el);
+  setTimeout(() => el.remove(), 60000);
+}
+async function pollAlerts() {
+  const rows = await api("/api/alerts?since=" + lastAlertId);
+  if (!rows.length) return;
+  rows.sort((a, b) => a.id - b.id);
+  lastAlertId = Math.max(lastAlertId, ...rows.map(r => r.id));
+  if (seeded) rows.filter(r => r.severity !== "info").forEach(toast);
+  seeded = true;
+  refreshAlertsTable();
+}
+async function refreshAlertsTable() {
+  const rows = await api("/api/alerts?since=0");
+  $("#alertsBody").innerHTML = rows.length ? rows.map(a => `
+    <tr style="${a.acknowledged ? "opacity:.6" : ""}">
+      <td class="mono">${fmtTime(a.ts)}</td><td>${sevBadge(a.severity)}</td>
+      <td><strong>${esc(a.title)}</strong><div class="muted" style="font-size:13px">${esc(a.detail)}</div></td>
+      <td>${a.ip ? ipLink(a.ip) : ""}</td>
+      <td>${a.acknowledged ? "" : `<button class="btn secondary" data-ack="${a.id}">Read</button>`}</td>
+    </tr>`).join("") : '<tr><td colspan="5" class="muted">No alerts.</td></tr>';
+  document.querySelectorAll("[data-ack]").forEach(b => b.onclick = async () => {
+    await api(`/api/alerts/${b.dataset.ack}/ack`, {method: "POST"}); refreshAlertsTable(); loadStatus();
+  });
+}
+$("#ackAll").onclick = async () => {
+  const rows = await api("/api/alerts?since=0");
+  await Promise.all(rows.filter(r => !r.acknowledged).map(r => api(`/api/alerts/${r.id}/ack`, {method: "POST"})));
+  refreshAlertsTable(); loadStatus();
+};
+
+// ---------- vulnerabilities
+$("#scanConfirm").onchange = () => { $("#scanBtn").disabled = !$("#scanConfirm").checked; };
+$("#scanBtn").onclick = async () => {
+  const ip = $("#scanIp").value.trim();
+  $("#scanMsg").textContent = "Starting scan…";
+  try {
+    const r = await api("/api/scan", {method: "POST", body: JSON.stringify({ip})});
+    $("#scanMsg").textContent = `Scan #${r.scan_id} started for ${ip}. This can take a few minutes.`;
+    loadScans();
+  } catch (e) { $("#scanMsg").textContent = e.message; }
+};
+async function loadScans() {
+  const rows = await api("/api/scans");
+  $("#scansBody").innerHTML = rows.length ? rows.map(s => `
+    <tr>
+      <td>${s.id}</td><td>${ipLink(s.ip)}</td><td>${fmtTime(s.started)}</td>
+      <td>${esc(s.status)}</td>
+      <td>${s.status === "done" || s.status === "failed" ? `<button class="link" data-scan="${s.id}">${esc(s.summary || "")}</button>` : "running…"}</td>
+    </tr>`).join("") : '<tr><td colspan="5" class="muted">No scans yet.</td></tr>';
+  document.querySelectorAll("[data-scan]").forEach(b => b.onclick = () => showFindings(b.dataset.scan));
+}
+async function showFindings(id) {
+  const s = await api("/api/scans/" + id);
+  $("#findingsPanel").classList.remove("hidden");
+  $("#findingsTitle").textContent = `Scan #${s.id} · ${s.ip}`;
+  if (!s.findings.length) {
+    $("#findingsBody").innerHTML = `<span class="muted">${esc(s.summary || "No findings.")}</span>`;
+    return;
+  }
+  $("#findingsBody").innerHTML = s.findings.map(f => `
+    <div class="panel" style="margin-bottom:10px">
+      <div class="row" style="justify-content:space-between">
+        <strong>${esc(f.title)}</strong>${sevBadge(f.severity)}
+      </div>
+      <div class="muted mono" style="margin-top:4px">Port ${f.port} · ${esc(f.service)}</div>
+      <div style="margin-top:6px">${esc(f.description)}</div>
+      <div class="fix"><strong>How to fix:</strong> ${esc(f.fix)}</div>
+    </div>`).join("");
+  $("#findingsPanel").scrollIntoView({behavior: "smooth"});
+}
+$("#closeFindings").onclick = () => $("#findingsPanel").classList.add("hidden");
+
+$("#discoverBtn").onclick = async () => {
+  $("#discoverBtn").disabled = true; $("#discoverBtn").textContent = "Scanning…";
+  try { await api("/api/discover", {method: "POST"}); } catch (e) {}
+  $("#discoverBtn").disabled = false; $("#discoverBtn").textContent = "Scan network now";
+  refresh();
+};
+
+function refresh() {
+  loadStatus().catch(() => {});
+  const active = document.querySelector("nav button.active").dataset.tab;
+  if (active === "devices") loadDevices().catch(() => {});
+  if (active === "traffic") loadTraffic().catch(() => {});
+  if (active === "alerts") refreshAlertsTable().catch(() => {});
+  if (active === "vulns") loadScans().catch(() => {});
+}
+
+loadDevices(); loadTraffic(); loadStatus(); pollAlerts();
+setInterval(() => { pollAlerts().catch(() => {}); loadStatus().catch(() => {}); }, 4000);
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

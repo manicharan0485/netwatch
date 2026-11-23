@@ -1,0 +1,3 @@
+.venv/
+netwatch.db
+__pycache__/

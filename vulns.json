@@ -1,0 +1,90 @@
+[
+  {
+    "id": "telnet-open",
+    "match": {"port": 23},
+    "severity": "high",
+    "title": "Telnet service is open",
+    "description": "Telnet sends usernames, passwords and commands in plain text, so anyone on the network can capture them.",
+    "fix": "Disable the Telnet service in the device's admin page and use SSH with key-based login instead."
+  },
+  {
+    "id": "ftp-open",
+    "match": {"port": 21},
+    "severity": "medium",
+    "title": "FTP service is open",
+    "description": "Plain FTP sends credentials and files unencrypted. Anonymous FTP access is a common misconfiguration.",
+    "fix": "Use SFTP or FTPS instead, disable anonymous logins, and restrict access to trusted hosts."
+  },
+  {
+    "id": "smb-open",
+    "match": {"port": 445},
+    "severity": "high",
+    "title": "SMB file sharing is reachable",
+    "description": "SMB is a frequent target for ransomware and worm-style attacks when exposed beyond the machines that need it.",
+    "fix": "Block port 445 from untrusted segments, disable SMBv1, and keep the operating system patched."
+  },
+  {
+    "id": "rdp-open",
+    "match": {"port": 3389},
+    "severity": "high",
+    "title": "Remote Desktop (RDP) is reachable",
+    "description": "RDP is heavily targeted by password guessing and exploit attempts.",
+    "fix": "Restrict RDP to a VPN or jump host, require Network Level Authentication, and enable multi-factor sign-in."
+  },
+  {
+    "id": "vnc-open",
+    "match": {"port": 5900},
+    "severity": "high",
+    "title": "VNC remote desktop is reachable",
+    "description": "VNC often has weak or no password protection and may be unencrypted.",
+    "fix": "Require a strong password, tunnel VNC through SSH or a VPN, and disable it if it is not needed."
+  },
+  {
+    "id": "db-exposed",
+    "match": {"ports": [3306, 5432, 6379, 27017, 1433, 9200]},
+    "severity": "high",
+    "title": "Database port is reachable on the network",
+    "description": "Databases exposed to the LAN are often configured without authentication or with default credentials.",
+    "fix": "Bind the database to 127.0.0.1 or a private interface, enable authentication, and firewall the port."
+  },
+  {
+    "id": "upnp-open",
+    "match": {"port": 1900},
+    "severity": "medium",
+    "title": "UPnP/SSDP service is reachable",
+    "description": "UPnP lets devices open ports on the router automatically, which can expose internal services to the internet.",
+    "fix": "Disable UPnP in the router settings unless you rely on it, and review any port mappings it created."
+  },
+  {
+    "id": "admin-panel",
+    "match": {"ports": [8080, 8443, 8888, 9090, 10000]},
+    "severity": "medium",
+    "title": "Web admin or alternate HTTP port is open",
+    "description": "Alternate web ports often host admin panels, which are targeted with default-password attacks.",
+    "fix": "Confirm the service is needed, change any default admin password, and restrict access to trusted addresses."
+  },
+  {
+    "id": "http-plain",
+    "match": {"port": 80},
+    "severity": "low",
+    "title": "Unencrypted HTTP is served",
+    "description": "Traffic over plain HTTP can be read or modified by anyone on the network path.",
+    "fix": "Enable HTTPS with a valid certificate and redirect HTTP to HTTPS."
+  },
+  {
+    "id": "openssh-old",
+    "match": {"product": "OpenSSH", "version_lt": "8.0"},
+    "severity": "medium",
+    "title": "Outdated OpenSSH version",
+    "description": "OpenSSH versions before 8.0 are old and lack several security fixes.",
+    "fix": "Update OpenSSH to a currently supported release through your OS package manager."
+  },
+  {
+    "id": "apache-old",
+    "match": {"product": "Apache httpd", "version_lt": "2.4.50"},
+    "severity": "high",
+    "title": "Outdated Apache httpd version",
+    "description": "Apache httpd before 2.4.50 has a known path traversal vulnerability (CVE-2021-41773) among other fixes.",
+    "fix": "Upgrade Apache httpd to a currently supported 2.4.x release and apply vendor security updates."
+  }
+]
