@@ -213,6 +213,11 @@ def home():
     return render_template("home.html")
 
 
+@app.route("/dashboard")
+def dashboard_page():
+    return render_template("dashboard.html")
+
+
 @app.route("/advanced")
 def index():
     return render_template("index.html")

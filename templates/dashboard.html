@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NetWatch · Dashboard</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+  :root { --warnc: var(--nw-yellow); --critc: var(--nw-red); --okc: var(--nw-green); }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 22px 20px 60px; display: grid; gap: 18px; }
+  h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
+  h1 { font-size: 24px; }
+  h2 { font-size: 15px; font-weight: 650; }
+  .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--nw-muted); font-weight: 600; }
+  .muted { color: var(--nw-muted); }
+  .card { background: var(--nw-surface); border: 1px solid var(--nw-line); border-radius: var(--nw-radius); box-shadow: var(--nw-shadow); min-width: 0; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 16px 18px 10px; }
+  .card-body { padding: 0 18px 18px; }
+  .top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .live { font-size: 12px; color: var(--nw-muted); display: flex; align-items: center; gap: 6px; }
+  .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--nw-green); box-shadow: 0 0 0 3px rgba(22,163,74,.18); }
+  .seg { display: inline-flex; background: var(--nw-surface-2); border: 1px solid var(--nw-line); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: none; padding: 6px 12px; border-radius: 7px; cursor: pointer; color: var(--nw-muted); font: inherit; font-size: 13px; font-weight: 600; }
+  .seg button[aria-pressed="true"] { background: var(--nw-surface); color: var(--nw-text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .seg button:focus-visible { outline: none; box-shadow: var(--nw-focus); }
+
+  /* KPIs */
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .kpi { padding: 16px 18px; display: grid; gap: 8px; }
+  .kpi .val { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .kpi .val small { font-size: 15px; color: var(--nw-muted); font-weight: 600; margin-left: 3px; }
+  .stack { display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 2px; background: var(--nw-surface-2); }
+  .stack i { display: block; height: 100%; }
+  .meter { height: 6px; background: var(--nw-surface-2); border-radius: 3px; overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 3px; transition: width .4s ease; }
+  .kpi .note { font-size: 12.5px; color: var(--nw-muted); }
+
+  /* layout */
+  .row-main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .row-low { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .row-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: start; }
+
+  /* devices table */
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--nw-muted); font-weight: 600; padding: 9px 12px; background: var(--nw-surface-2); border-block: 1px solid var(--nw-line); white-space: nowrap; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--nw-line); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: var(--nw-surface-2); }
+  th:first-child, td:first-child { padding-left: 18px; }
+  th:last-child, td:last-child { padding-right: 18px; }
+  .host { font-weight: 600; font-size: 14px; }
+  .sub { color: var(--nw-muted); font-size: 12.5px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 9px 3px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.ok { color: var(--nw-green); background: rgba(22,163,74,.12); }
+  .pill.warn { color: var(--nw-yellow); background: rgba(217,119,6,.12); }
+  .pill.crit { color: var(--nw-red); background: rgba(220,38,38,.10); }
+  .pill.grey { color: var(--nw-muted); background: var(--nw-surface-2); }
+  .vc { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+  .vc span { font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+  .vc .c { background: rgba(220,38,38,.12); color: var(--nw-red); }
+  .vc .h { background: rgba(217,119,6,.14); color: var(--nw-yellow); }
+  .vc .m { background: var(--nw-surface-2); color: var(--nw-muted); }
+  .vc .l { background: var(--nw-surface-2); color: var(--nw-muted); }
+  .none { color: var(--nw-muted); font-size: 12.5px; }
+  .clickable { cursor: pointer; }
+
+  /* alerts */
+  .alerts { list-style: none; margin: 0; padding: 0 0 4px; max-height: 520px; overflow: auto; }
+  .alerts li { display: grid; grid-template-columns: 4px minmax(0, 1fr); gap: 12px; padding: 12px 18px; border-top: 1px solid var(--nw-line); }
+  .alerts .bar { border-radius: 2px; }
+  .alerts .bar.critical, .alerts .bar.high { background: var(--nw-red); }
+  .alerts .bar.medium { background: var(--nw-yellow); }
+  .alerts .bar.low { background: var(--nw-accent); }
+  .alerts b { font-weight: 600; font-size: 13.5px; display: block; }
+  .alerts p { margin: 3px 0 0; color: var(--nw-muted); font-size: 12.5px; }
+  .alerts .meta { font-size: 11.5px; color: var(--nw-muted); margin-top: 4px; }
+  .empty { padding: 26px 18px; color: var(--nw-muted); text-align: center; font-size: 14px; }
+
+  /* traffic */
+  .chart-wrap { padding: 4px 12px 14px 8px; }
+  #trafficChart { display: block; }
+  .legend-note { font-size: 12px; color: var(--nw-muted); padding: 0 18px 16px; }
+
+  /* vulnerabilities */
+  .vrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 12px 0; border-top: 1px solid var(--nw-line); align-items: center; }
+  .vrow:first-child { border-top: 0; padding-top: 0; }
+  .vrow .name { font-weight: 600; font-size: 13.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vbar { grid-column: 1 / -1; display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 2px; background: var(--nw-surface-2); }
+  .vbar i { display: block; height: 100%; }
+
+  /* tickets */
+  .tstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .tstat { background: var(--nw-surface-2); border-radius: 10px; padding: 10px 12px; }
+  .tstat b { display: block; font-size: 22px; letter-spacing: -0.01em; }
+  .tlist { list-style: none; margin: 0; padding: 0; }
+  .tlist li { padding: 10px 0; border-top: 1px solid var(--nw-line); }
+  .tlist li:first-child { border-top: 0; }
+  .tlist .t { font-weight: 600; font-size: 13.5px; }
+
+  footer { color: var(--nw-muted); font-size: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  a.back { color: var(--nw-accent); text-decoration: none; font-size: 14px; font-weight: 600; }
+  a.back:hover { text-decoration: underline; }
+  .hidden { display: none !important; }
+
+  @media (max-width: 1080px) {
+    .row-main, .row-low { grid-template-columns: minmax(0, 1fr); }
+    .row-three { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .row-three > :first-child { grid-column: 1 / -1; }
+  }
+  @media (max-width: 720px) {
+    .wrap { padding: 14px 12px 40px; gap: 14px; }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .kpi { padding: 14px; }
+    .kpi .val { font-size: 28px; }
+    .row-three { grid-template-columns: minmax(0, 1fr); }
+    .row-three > :first-child { grid-column: auto; }
+    .tstats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    /* devices become stacked cards on phones */
+    table { min-width: 0; }
+    thead { display: none; }
+    tbody, tr, td { display: block; width: 100%; }
+    tbody tr { padding: 12px 0; border-bottom: 1px solid var(--nw-line); }
+    tbody tr:last-child { border-bottom: 0; }
+    td { border: 0; padding: 4px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: normal; text-align: right; }
+    td:first-child { display: block; text-align: left; padding: 0 18px 6px; }
+    td[data-label]::before { content: attr(data-label); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--nw-muted); font-weight: 600; text-align: left; }
+    .vc { justify-content: flex-end; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <span class="nw-logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+      <div>
+        <h1>Network dashboard</h1>
+        <div class="muted" style="font-size:13px;margin-top:3px" id="subline">Loading…</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div class="seg" role="group" aria-label="Traffic period" id="rangeSeg">
+        <button data-minutes="30">30 min</button>
+        <button data-minutes="60" aria-pressed="true">1 h</button>
+        <button data-minutes="120">2 h</button>
+      </div>
+      <span class="live" id="live">Updated just now</span>
+      <a class="back" href="/">← Home</a>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis" aria-label="Summary"></section>
+
+  <div class="row-main">
+    <section class="card">
+      <div class="card-head"><h2>Devices</h2><span class="label" id="deviceCount"></span></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Device</th><th>Status</th><th>Trust</th><th>Open ports</th><th>Vulnerabilities</th><th>Last scan</th></tr></thead>
+          <tbody id="devices"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Recent alerts</h2><span class="label" id="alertCount"></span></div>
+      <ul class="alerts" id="alerts"></ul>
+    </section>
+  </div>
+
+  <div class="row-low">
+    <section class="card">
+      <div class="card-head"><h2>Traffic in and out of the network</h2><span class="label" id="trafficRange">Last hour</span></div>
+      <div class="chart-wrap"><canvas id="trafficChart" role="img" aria-label="Download and upload over time"></canvas></div>
+      <div class="legend-note" id="trafficNote"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Support tickets</h2><span class="label">Queue</span></div>
+      <div class="card-body">
+        <div class="tstats">
+          <div class="tstat"><span class="label">Open</span><b id="tOpen">0</b></div>
+          <div class="tstat"><span class="label">In progress</span><b id="tProg">0</b></div>
+          <div class="tstat"><span class="label">Resolved</span><b id="tRes">0</b></div>
+        </div>
+        <ul class="tlist" id="tlist"></ul>
+      </div>
+    </section>
+  </div>
+
+  <div class="row-three">
+    <section class="card">
+      <div class="card-head"><h2>Vulnerabilities by device</h2><span class="label">Most urgent first</span></div>
+      <div class="card-body" id="vulns"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Network location</h2><span class="label">Public address</span></div>
+      <div class="card-body" id="location"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Scanning</h2><span class="label">Automatic</span></div>
+      <div class="card-body" id="scanning"></div>
+    </section>
+  </div>
+
+  <footer><span>NetWatch · data from this computer, refreshed every 10 seconds</span><span class="mono" id="stamp"></span></footer>
+</div>
+
+<script src="/static/chart.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const api = async (path) => {
+  const r = await fetch(path);
+  if (r.status === 401) { window.location.href = "/login"; throw new Error("login"); }
+  if (!r.ok) throw new Error("request failed");
+  return r.json();
+};
+const ago = t => {
+  if (!t) return "never";
+  const m = Math.round((Date.now() / 1000 - t) / 60);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  if (m < 1440) return `${Math.round(m / 60)} h ago`;
+  return `${Math.round(m / 1440)} d ago`;
+};
+const fmtTime = t => t ? new Date(t * 1000).toLocaleString([], {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}) : "";
+
+// Device status: a critical problem is red, a high problem or an unknown device is amber.
+function deviceState(d) {
+  const v = d.vulns || {};
+  if (d.blocked) return ["warn", "Blocked"];
+  if (v.critical > 0) return ["crit", "Critical"];
+  if (v.high > 0) return ["warn", "Needs fixing"];
+  if (!d.trusted && d.online) return ["warn", "Unknown"];
+  if (!d.online) return ["grey", "Offline"];
+  return ["ok", "Healthy"];
+}
+const ORDER = {crit: 0, warn: 1, ok: 2, grey: 3};
+const vcounts = v => {
+  if (!v) return '<span class="none">Not scanned yet</span>';
+  const parts = [];
+  if (v.critical) parts.push(`<span class="c">${v.critical} critical</span>`);
+  if (v.high) parts.push(`<span class="h">${v.high} high</span>`);
+  if (v.medium) parts.push(`<span class="m">${v.medium} medium</span>`);
+  if (v.low) parts.push(`<span class="l">${v.low} low</span>`);
+  return parts.length ? `<div class="vc">${parts.join("")}</div>` : '<span class="pill ok">None found</span>';
+};
+
+function renderKpis(sum, home, devices, alerts, tickets) {
+  const crit = devices.filter(d => deviceState(d)[0] === "crit").length;
+  const warn = devices.filter(d => deviceState(d)[0] === "warn").length;
+  const online = devices.filter(d => d.online).length;
+  const unread = alerts.filter(a => !a.acknowledged);
+  const uc = unread.filter(a => a.severity === "critical" || a.severity === "high").length;
+  const um = unread.filter(a => a.severity === "medium").length;
+  const ui = unread.length - uc - um;
+  const c = tickets.counts;
+  const share = (n, total) => total ? (n / total * 100) : 0;
+  $("kpis").innerHTML = `
+    <div class="card kpi"><span class="label">Devices online</span>
+      <div class="val">${online}<small>/ ${devices.length}</small></div>
+      <div class="stack" aria-hidden="true"><i style="flex:${online - warn - crit};background:var(--nw-green)"></i><i style="flex:${warn};background:var(--nw-yellow)"></i><i style="flex:${crit};background:var(--nw-red)"></i></div>
+      <div class="note">${warn} to check · ${crit} critical</div></div>
+    <div class="card kpi"><span class="label">Unread alerts</span>
+      <div class="val">${unread.length}</div>
+      <div class="stack" aria-hidden="true"><i style="flex:${uc};background:var(--nw-red)"></i><i style="flex:${um};background:var(--nw-yellow)"></i><i style="flex:${ui};background:var(--nw-accent)"></i></div>
+      <div class="note">${uc} serious · ${um} medium · ${ui} info</div></div>
+    <div class="card kpi"><span class="label">Vulnerabilities found</span>
+      <div class="val">${sum.vulnerabilities.critical + sum.vulnerabilities.high + sum.vulnerabilities.medium + sum.vulnerabilities.low}</div>
+      <div class="note">${sum.vulnerabilities.critical} critical · ${sum.vulnerabilities.high} high · ${sum.devices_scanned} of ${sum.devices_total} devices scanned</div></div>
+    <div class="card kpi"><span class="label">Open tickets</span>
+      <div class="val">${c.unresolved}</div>
+      <div class="meter"><i style="width:${share(c.in_progress, c.unresolved)}%;background:var(--nw-accent)"></i></div>
+      <div class="note">${c.open} waiting · ${c.in_progress} in progress · ${c.resolved} resolved</div></div>`;
+}
+
+function renderDevices(devices) {
+  const rows = devices.map(d => ({d, st: deviceState(d)}))
+    .sort((a, b) => ORDER[a.st[0]] - ORDER[b.st[0]] || (b.d.online - a.d.online));
+  $("deviceCount").textContent = `${devices.length} known`;
+  $("devices").innerHTML = rows.length ? rows.map(({d, st}) => `
+    <tr>
+      <td><div class="host">${esc(d.hostname || "Unnamed device")}</div><div class="sub mono">${esc(d.ip || "")} · ${esc(d.os_guess || "system unknown")}</div></td>
+      <td data-label="Status"><span class="pill ${st[0]}">${st[1]}</span></td>
+      <td data-label="Trust">${d.trusted ? '<span class="sub">Approved</span>' : d.blocked ? '<span class="sub">Blocked</span>' : '<span class="sub">Not yet</span>'}</td>
+      <td data-label="Open ports" class="mono sub">${esc(d.open_ports || (d.last_scanned ? "none" : "–"))}</td>
+      <td data-label="Vulnerabilities">${vcounts(d.vulns)}</td>
+      <td data-label="Last scan" class="sub">${ago(d.last_scanned)}</td>
+    </tr>`).join("") : '<tr><td colspan="6"><div class="empty">No devices yet. Use "Scan my network" on the home screen.</div></td></tr>';
+}
+
+function renderAlerts(alerts) {
+  const list = alerts.filter(a => !a.acknowledged).slice(0, 12);
+  $("alertCount").textContent = list.length ? `${list.length} unread` : "";
+  $("alerts").innerHTML = list.length ? list.map(a => `
+    <li><span class="bar ${esc(a.severity)}"></span>
+      <div><b>${esc(a.title)}</b><p>${esc(a.detail)}</p><div class="meta">${esc(a.ip || "whole network")} · ${ago(a.ts)}</div></div></li>`).join("")
+    : '<li class="empty" style="display:block">No unread alerts. Nothing needs attention right now.</li>';
+}
+
+function renderVulns(devices) {
+  const list = devices.filter(d => d.vulns && (d.vulns.critical || d.vulns.high || d.vulns.medium || d.vulns.low))
+    .sort((a, b) => (b.vulns.critical * 100 + b.vulns.high * 10 + b.vulns.medium) - (a.vulns.critical * 100 + a.vulns.high * 10 + a.vulns.medium))
+    .slice(0, 6);
+  if (!list.length) { $("vulns").innerHTML = '<div class="empty">No known problems found on scanned devices.</div>'; return; }
+  $("vulns").innerHTML = list.map(d => {
+    const v = d.vulns, total = v.critical + v.high + v.medium + v.low;
+    const seg = (n, c) => n ? `<i style="flex:${n};background:${c}"></i>` : "";
+    return `<div class="vrow">
+      <span class="name">${esc(d.hostname || d.ip)}</span>
+      <span class="sub mono">${total} issue${total === 1 ? "" : "s"}</span>
+      <div class="vbar">${seg(v.critical, "var(--nw-red)")}${seg(v.high, "var(--nw-yellow)")}${seg(v.medium, "var(--nw-accent)")}${seg(v.low, "var(--nw-line)")}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderTickets(data) {
+  const c = data.counts;
+  $("tOpen").textContent = c.open; $("tProg").textContent = c.in_progress; $("tRes").textContent = c.resolved;
+  const open = data.tickets.filter(t => t.status !== "resolved").slice(0, 5);
+  $("tlist").innerHTML = open.length ? open.map(t => `
+    <li><div class="t">#${t.id} ${esc(t.title)}</div>
+      <div class="sub">${esc(t.severity)} · ${t.assignee ? "assigned to " + esc(t.assignee) : "unassigned"} · ${ago(t.updated)}</div></li>`).join("")
+    : '<li class="sub">No open tickets.</li>';
+}
+
+function renderLocation(loc) {
+  if (!loc || loc.error) { $("location").innerHTML = `<p class="muted" style="margin:0">${esc(loc?.error || "Location not available")}</p>`; return; }
+  $("location").innerHTML = `<div class="mono" style="font-size:15px;font-weight:600">${esc(loc.city || "Unknown city")}${loc.region ? ", " + esc(loc.region) : ""}</div>
+    <div class="muted" style="margin-top:4px">${esc(loc.country || "")}</div>
+    <dl style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:14px 0 0;font-size:13px">
+      <dt class="muted">Provider</dt><dd style="margin:0">${esc(loc.isp || "unknown")}</dd>
+      <dt class="muted">Address</dt><dd class="mono" style="margin:0">${esc(loc.public_ip || "")}</dd>
+    </dl>
+    <p class="muted" style="font-size:12px;margin:12px 0 0">Approximate, based on the internet provider's network. Devices on your network cannot be located.</p>`;
+}
+
+function renderScanning(sum, home) {
+  const pct = sum.devices_total ? Math.round(sum.devices_scanned / sum.devices_total * 100) : 0;
+  $("scanning").innerHTML = `
+    <div class="kpi" style="padding:0;gap:8px">
+      <div class="val" style="font-size:28px">${pct}<small>%</small></div>
+      <div class="meter"><i style="width:${pct}%;background:var(--nw-accent)"></i></div>
+      <div class="note muted" style="font-size:13px">${sum.devices_scanned} of ${sum.devices_total} devices have been checked</div>
+    </div>
+    <p class="muted" style="font-size:13px;margin:14px 0 0">${sum.scanning_now ? `Checking ${esc(sum.scanning_now)} now.` : "Scanning runs automatically; each device is checked every 24 hours."}</p>
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Network: <span class="mono">${esc(sum.subnet || "")}</span>${sum.running_as_root ? "" : " · run with sudo for OS detection"}</p>`;
+}
+
+function drawTraffic(s, minutes) {
+  drawTrafficChart($("trafficChart"), s);
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const fmt = b => b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : b >= 1024 ? (b / 1024).toFixed(1) + " KB" : b + " B";
+  $("trafficRange").textContent = `Last ${minutes >= 60 ? (minutes / 60) + " h" : minutes + " min"}`;
+  $("trafficNote").textContent = `Download ${fmt(sum(s.down))} · Upload ${fmt(sum(s.up))}` +
+    (s.down.concat(s.up).some(v => v > 0) ? "" : " · no traffic recorded yet");
+}
+
+let minutes = 60;
+async function load() {
+  try {
+    const [sum, home, devices, alerts, tickets, traffic] = await Promise.all([
+      api("/api/summary"), api("/api/home"), api("/api/vuln-overview"),
+      api("/api/alerts?since=0"), api("/api/tickets?status=all"), api("/api/traffic-history?minutes=" + minutes)]);
+    $("subline").textContent = `${sum.subnet || "Network not set"} · ${home.devices_online} of ${home.devices_total} devices online · ${home.status.headline}`;
+    renderKpis(sum, home, devices, alerts, tickets);
+    renderDevices(devices);
+    renderAlerts(alerts);
+    renderVulns(devices);
+    renderTickets(tickets);
+    renderLocation(sum.network_location);
+    renderScanning(sum, home);
+    drawTraffic(traffic, minutes);
+    $("live").textContent = "Updated " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+  } catch (e) {
+    if (e.message !== "login") $("live").textContent = "Connection problem, retrying…";
+  }
+}
+
+document.querySelectorAll("#rangeSeg button").forEach(b => b.addEventListener("click", () => {
+  minutes = Number(b.dataset.minutes);
+  document.querySelectorAll("#rangeSeg button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  load();
+}));
+window.addEventListener("resize", () => load());
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>
