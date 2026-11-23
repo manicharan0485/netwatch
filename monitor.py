@@ -6,7 +6,10 @@ Everything here is passive or host-discovery only; nothing attacks anything.
 import ipaddress
 import json
 import logging
+import os
+import shutil
 import socket
+import struct
 import subprocess
 import threading
 import time
@@ -32,6 +35,25 @@ def detect_subnet(configured):
     return str(ipaddress.ip_network(f"{ip}/24", strict=False))
 
 
+def is_root():
+    return hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+def default_gateway():
+    """Return the default gateway (usually the router) from the Linux routing table."""
+    try:
+        with open("/proc/net/route") as fh:
+            next(fh, None)
+            for line in fh:
+                f = line.split()
+                # Destination 00000000 is the default route; flags 0x2 means gateway set.
+                if len(f) >= 4 and f[1] == "00000000" and int(f[3], 16) & 0x2:
+                    return socket.inet_ntoa(struct.pack("<L", int(f[2], 16)))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 class Monitor:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -49,24 +71,37 @@ class Monitor:
         self.port_hits = defaultdict(dict)     # src -> {dport: timestamp}
         self.bytes_window = defaultdict(deque) # src -> (ts, bytes) for spike check
         self.first_discovery_done = False
+        self.last_discovery = None
         self.sniffing = False
         self.sniff_error = None
 
     # ------------------------------------------------------------ discovery
 
     def discover(self):
-        """Ping-sweep the subnet with nmap and update the device table."""
+        """Ping-sweep the subnet with nmap and update the device table.
+
+        The outcome (hosts found or the error) is kept in self.last_discovery
+        so the dashboard can explain an empty device list.
+        """
+        now = time.time()
+        self.last_discovery = {"time": now, "subnet": self.subnet, "hosts": 0, "error": None}
+
+        if shutil.which("nmap") is None:
+            return self._discovery_error("nmap is not installed. Run: sudo apt install nmap")
         try:
-            out = subprocess.run(
+            proc = subprocess.run(
                 ["nmap", "-sn", "-oX", "-", self.subnet],
                 capture_output=True, text=True, timeout=600, check=False,
-            ).stdout
-            root = ET.fromstring(out)
+            )
+            root = ET.fromstring(proc.stdout)
+        except subprocess.TimeoutExpired:
+            return self._discovery_error("nmap discovery timed out")
         except (subprocess.SubprocessError, ET.ParseError, OSError) as exc:
-            log.warning("discovery failed: %s", exc)
-            return 0
-
-        now = time.time()
+            return self._discovery_error(f"nmap failed: {exc}")
+        if proc.returncode != 0 and not proc.stdout.strip():
+            return self._discovery_error(proc.stderr.strip() or "nmap failed")
+        if not is_root():
+            log.warning("not running as root: nmap ARP discovery needs sudo")
         seen = 0
         for host in root.findall("host"):
             if host.find("status") is None or host.find("status").get("state") != "up":
@@ -88,8 +123,18 @@ class Monitor:
             seen += 1
             self._upsert_device(ip, mac, hostname, now)
         self.first_discovery_done = True
+        self.last_discovery["hosts"] = seen
+        if seen == 0:
+            self.last_discovery["error"] = (
+                "nmap ran but found no hosts. Check that discovery_subnet in config.json "
+                "matches your LAN and that you started the app with sudo.")
         log.info("discovery of %s found %d hosts", self.subnet, seen)
         return seen
+
+    def _discovery_error(self, message):
+        self.last_discovery["error"] = message
+        log.warning("discovery failed: %s", message)
+        return 0
 
     def _mac_from_arp(self, ip):
         try:
@@ -301,6 +346,10 @@ class Monitor:
     def status(self):
         return {
             "subnet": self.subnet,
+            "nmap_installed": shutil.which("nmap") is not None,
+            "running_as_root": is_root(),
+            "last_discovery": self.last_discovery,
+            "gateway": default_gateway(),
             "sniffing": self.sniffing,
             "sniff_error": self.sniff_error,
             "interface": self.cfg.get("interface"),

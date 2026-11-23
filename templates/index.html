@@ -86,6 +86,7 @@
 </nav>
 <main>
   <section id="tab-devices" class="tab">
+    <div class="notice hidden" id="discoveryNotice" style="margin-bottom:12px"></div>
     <div class="panel">
       <table>
         <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>First seen</th><th>Last seen</th><th>Trust</th></tr></thead>
@@ -125,6 +126,7 @@
     </div>
     <div class="panel">
       <div class="row">
+        <button class="btn secondary" id="scanRouterBtn">Scan my router</button>
         <input type="text" id="scanIp" placeholder="Device IP, e.g. 192.168.1.10">
         <label class="row muted"><input type="checkbox" id="scanConfirm"> I am authorized to scan this device</label>
         <button class="btn" id="scanBtn" disabled>Start scan</button>
@@ -230,15 +232,28 @@ document.addEventListener("click", e => {
 });
 
 // ---------- status / devices / traffic
+let gatewayIp = null;
 async function loadStatus() {
   const s = await api("/api/status");
+  gatewayIp = s.gateway;
   $("#statusline").textContent =
     `Subnet ${s.subnet} · interface ${s.interface} · ${s.devices} devices (${s.untrusted_devices} untrusted) · ` +
     (s.sniffing ? "capturing packets" : "capture off");
   $("#alertCount").textContent = s.unacked_alerts ? `(${s.unacked_alerts})` : "";
+
   const notice = $("#captureNotice");
   if (s.sniff_error) { notice.textContent = "Packet capture is off: " + s.sniff_error; notice.classList.remove("hidden"); }
   else notice.classList.add("hidden");
+
+  // Explain discovery problems instead of showing an empty device list.
+  const problems = [];
+  if (!s.nmap_installed) problems.push("nmap is not installed. Run: sudo apt install nmap");
+  if (!s.running_as_root) problems.push("Run with sudo so nmap can find devices by ARP.");
+  if (s.last_discovery && s.last_discovery.error) problems.push("Device discovery: " + s.last_discovery.error);
+  if (!s.last_discovery) problems.push("Device discovery has not run yet. Click 'Scan network now'.");
+  const dn = $("#discoveryNotice");
+  if (problems.length) { dn.innerHTML = problems.map(esc).join("<br>"); dn.classList.remove("hidden"); }
+  else dn.classList.add("hidden");
 }
 
 async function loadDevices() {
@@ -308,6 +323,11 @@ $("#ackAll").onclick = async () => {
 
 // ---------- vulnerabilities
 $("#scanConfirm").onchange = () => { $("#scanBtn").disabled = !$("#scanConfirm").checked; };
+$("#scanRouterBtn").onclick = () => {
+  if (!gatewayIp) { $("#scanMsg").textContent = "Could not detect the router address. Type your router's IP instead (often 192.168.0.1 or 192.168.1.1)."; return; }
+  $("#scanIp").value = gatewayIp;
+  $("#scanMsg").textContent = `Router address set to ${gatewayIp}. Tick the authorization box to start.`;
+};
 $("#scanBtn").onclick = async () => {
   const ip = $("#scanIp").value.trim();
   $("#scanMsg").textContent = "Starting scan…";
