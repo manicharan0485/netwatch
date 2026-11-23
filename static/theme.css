@@ -425,3 +425,32 @@ header .link, .link { color: var(--nw-text); font-weight: 600; }
   header > .who .link:last-child, header > .who a.link:last-child { border-bottom: 0; }
   header .who { font-size: 16px; margin-top: 0; }
 }
+
+/* ---- Phones: no bottom bar. The section buttons sit in the page as a two-column grid. ---- */
+@media (max-width: 720px) {
+  main { padding: 20px 16px 40px; }
+  .buttons {
+    position: static !important; display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+    margin: 22px 0; padding: 0; background: none; border: 0; box-shadow: none; overflow: visible;
+  }
+  .big {
+    flex: none; min-width: 0; min-height: 124px; margin: 0;
+    padding: 70px 16px 16px; align-items: flex-start; justify-content: flex-start; text-align: left;
+    font-size: 16px; font-weight: 700; letter-spacing: normal; color: var(--nw-text);
+    background: var(--nw-surface); border: 1px solid var(--nw-line); border-radius: var(--nw-radius);
+    box-shadow: var(--nw-shadow);
+  }
+  .big:hover { transform: none; }
+  .big::before {
+    display: block; position: absolute; left: 16px; top: 16px; width: 40px; height: 40px; margin: 0;
+    border-radius: 12px; background: var(--nw-accent-soft);
+  }
+  .big::after {
+    display: block; position: absolute; order: 0; left: 16px; top: 16px; width: 40px; height: 40px; margin: 0;
+    border-radius: 0; background: var(--nw-accent); opacity: 1;
+    -webkit-mask: var(--icon) center / 22px no-repeat; mask: var(--icon) center / 22px no-repeat;
+  }
+  .big small { display: block; font-size: 14px; font-weight: 400; color: var(--nw-muted); margin-top: 4px; }
+  .big.active { color: var(--nw-text); background: var(--nw-surface); border-color: var(--nw-accent); box-shadow: 0 0 0 3px var(--nw-accent-soft); }
+}
